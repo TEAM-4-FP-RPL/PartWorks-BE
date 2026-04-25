@@ -1,0 +1,53 @@
+# Binaries for programs and plugins
+/bin/
+/build/
+/dist/
+
+# Output of the go build tool
+*.out
+*.test
+coverage.out
+
+# Dependency directories (remove if you commit vendor/)
+/vendor/
+
+# Go workspace files
+/pkg/
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.test
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/
+.idea/
+*.iml
+*.swp
+*~
+
+# Temporary files
+tmp/
+*.tmp
+
+# Docker Compose override (local configs)
+docker-compose.override.yml
+
+# Misc
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore local IDE/session/caches
+/.cache/
+
+# Keep module files (go.mod, go.sum) in repo
