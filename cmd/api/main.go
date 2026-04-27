@@ -1,22 +1,55 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"log"
 	"net/http"
-	"os"
+	"time"
+
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/config"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/database"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/handler"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/repository"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/routes"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "OK")
-	})
+	_ = godotenv.Load()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	db, err := database.NewPostgresDB(ctx)
+	if err != nil {
+		log.Fatalf("database initialization failed: %v", err)
 	}
-	fmt.Println("Starting server on :" + port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		fmt.Println("server error:", err)
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("failed to get sql.DB: %v", err)
 	}
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatalf("database ping failed: %v", err)
+	}
+
+	log.Println("database connected")
+
+	userRepo := repository.NewUserRepository(db)
+	authUC := usecase.NewAuthUsecase(userRepo)
+	authH := handler.NewAuthHandler(authUC)
+
+	router := routes.NewRouter(authH)
+
+	port := config.GetPort()
+	srv := &http.Server{Addr: ":" + port, Handler: router}
+	go func() {
+		log.Printf("listening on :%s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server failed: %v", err)
+		}
+	}()
+
+	select {}
 }
