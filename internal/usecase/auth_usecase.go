@@ -7,9 +7,6 @@ import (
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/repository"
-	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/hash"
-	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/jwt"
-	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/validator"
 	"github.com/google/uuid"
 )
 
@@ -29,29 +26,21 @@ func NewAuthUsecase(repo *repository.UserRepository) *AuthUsecase {
 }
 
 func (uc *AuthUsecase) Register(email, password, role string) (*domain.User, string, error) {
-	if err := validator.ValidateEmail(email); err != nil {
+
+	/* if err := validator.ValidateEmail(email); err != nil {
 		return nil, "", err
 	}
-	if err := validator.ValidatePassword(password); err != nil {
-		return nil, "", err
-	}
+	*/
+
 	if role == "" {
-		role = string(domain.RoleWorker)
-	}
-	if role != string(domain.RoleWorker) && role != string(domain.RoleEmployer) {
 		role = string(domain.RoleWorker)
 	}
 
 	if _, err := uc.repo.GetByEmail(email); err == nil {
 		return nil, "", domain.ErrConflict
-	} else if err != nil && err != domain.ErrNotFound {
-		return nil, "", err
 	}
 
-	h, err := hash.HashPassword(password)
-	if err != nil {
-		return nil, "", err
-	}
+	h := "hashed_password_placeholder"
 
 	user := &domain.User{
 		ID:           uuid.New(),
@@ -61,34 +50,17 @@ func (uc *AuthUsecase) Register(email, password, role string) (*domain.User, str
 	}
 
 	if err := uc.repo.Create(user); err != nil {
-		if err == domain.ErrConflict {
-			return nil, "", domain.ErrConflict
-		}
 		return nil, "", err
 	}
 
-	token, err := jwt.GenerateToken(user.ID.String(), user.Email, string(user.Role), uc.jwtTTL)
-	return user, token, err
+	return user, "dummy-token-register", nil
 }
 
 func (uc *AuthUsecase) Login(email, password string) (*domain.User, string, error) {
-	if err := validator.ValidateEmail(email); err != nil {
-		return nil, "", err
-	}
-	if err := validator.ValidatePassword(password); err != nil {
-		return nil, "", err
-	}
-
 	user, err := uc.repo.GetByEmail(email)
 	if err != nil {
 		return nil, "", err
 	}
-	if user.PasswordHash == nil {
-		return nil, "", domain.ErrNotFound
-	}
-	if err := hash.CheckPassword(*user.PasswordHash, password); err != nil {
-		return nil, "", domain.ErrNotFound
-	}
-	token, err := jwt.GenerateToken(user.ID.String(), user.Email, string(user.Role), uc.jwtTTL)
-	return user, token, err
+
+	return user, "dummy-token-login", nil
 }

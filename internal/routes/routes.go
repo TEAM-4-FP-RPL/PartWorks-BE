@@ -1,16 +1,17 @@
 package routes
 
 import (
-	"net/http"
-
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/handler"
-	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/middleware"
+	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
-func NewRouter(authH *handler.AuthHandler) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/auth/register", authH.Register)
-	mux.HandleFunc("/auth/login", authH.Login)
-	// add more routes here as project grows
-	return middleware.CORS(middleware.Log(mux))
+func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handler {
+	r := gin.Default()
+
+	r.POST("/auth/register", func(c *gin.Context) { c.String(200, "Register Placeholder") })
+	r.POST("/auth/login", func(c *gin.Context) { c.String(200, "Login Placeholder") })
+	r.GET("/employer/jobs", jobH.GetEmployerJobs)
+
+	return r
 }
