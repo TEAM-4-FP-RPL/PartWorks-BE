@@ -11,9 +11,6 @@ coverage.out
 # Dependency directories (remove if you commit vendor/)
 /vendor/
 
-# Go workspace files
-/pkg/
-
 # Environment files
 .env
 .env.*
