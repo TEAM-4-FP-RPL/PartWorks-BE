@@ -8,6 +8,7 @@ import (
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/dto"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/middleware"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/response"
 	"github.com/google/uuid"
@@ -56,7 +57,7 @@ func mapDayToInt(day string) int {
 	case "sunday":
 		return 7
 	default:
-		return 1 // Default to monday
+		return 0
 	}
 }
 
@@ -150,7 +151,7 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// userID should be set in context by AuthMiddleware
-	val := r.Context().Value("user_id")
+	val := r.Context().Value(middleware.UserIDKey)
 	if val == nil {
 		response.Error(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -185,8 +186,13 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, s := range req.Schedules {
+		day := mapDayToInt(s.Day)
+		if day == 0 {
+			response.Error(w, http.StatusBadRequest, "invalid day name: "+s.Day)
+			return
+		}
 		job.Schedules = append(job.Schedules, domain.JobSchedule{
-			Day:       mapDayToInt(s.Day),
+			Day:       day,
 			StartTime: s.StartTime,
 			EndTime:   s.EndTime,
 		})

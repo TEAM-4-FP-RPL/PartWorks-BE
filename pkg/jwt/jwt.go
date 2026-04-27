@@ -21,3 +21,20 @@ func GenerateToken(userID string, email string, role string, ttl time.Duration) 
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }
+
+func VerifyToken(tokenStr string) (gjwt.MapClaims, error) {
+        secret := os.Getenv("JWT_SECRET")
+        if secret == "" {
+                secret = "dev-secret"
+        }
+        token, err := gjwt.Parse(tokenStr, func(token *gjwt.Token) (interface{}, error) {
+                return []byte(secret), nil
+        })
+        if err != nil {
+                return nil, err
+        }
+        if claims, ok := token.Claims.(gjwt.MapClaims); ok && token.Valid {
+                return claims, nil
+        }
+        return nil, gjwt.ErrSignatureInvalid
+}
