@@ -1,20 +1,21 @@
 package handler
-
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/dto"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/response"
+	"github.com/google/uuid"
 )
 
 type JobHandler struct {
 	uc *usecase.JobUsecase
 }
-
 func NewJobHandler(uc *usecase.JobUsecase) *JobHandler { return &JobHandler{uc: uc} }
 
 func dayName(n int) string {
@@ -35,6 +36,27 @@ func dayName(n int) string {
 		return "sunday"
 	default:
 		return "unknown"
+	}
+}
+
+func mapDayToInt(day string) int {
+	switch strings.ToLower(day) {
+	case "monday":
+		return 1
+	case "tuesday":
+		return 2
+	case "wednesday":
+		return 3
+	case "thursday":
+		return 4
+	case "friday":
+		return 5
+	case "saturday":
+		return 6
+	case "sunday":
+		return 7
+	default:
+		return 1 // Default to monday
 	}
 }
 
@@ -119,4 +141,71 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 			"total": total,
 		},
 	})
+}
+
+func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// userID should be set in context by AuthMiddleware
+	val := r.Context().Value("user_id")
+	if val == nil {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	userIDStr, ok := val.(string)
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	employerID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, "invalid user id")
+		return
+	}
+
+	var req dto.CreateJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	job := &domain.Job{
+		EmployerID:  employerID,
+		CategoryID:  req.CategoryID,
+		Title:       req.Title,
+		Description: req.Description,
+		Type:        domain.JobType(req.Type),
+		Salary:      req.Salary,
+		Location:    req.Location,
+	}
+
+	for _, s := range req.Schedules {
+		job.Schedules = append(job.Schedules, domain.JobSchedule{
+			Day:       mapDayToInt(s.Day),
+			StartTime: s.StartTime,
+			EndTime:   s.EndTime,
+		})
+	}
+
+	if err := h.uc.Create(job); err != nil {
+		response.Error(w, http.StatusInternalServerError, "failed to create job")
+		return
+	}
+
+	res := dto.CreateJobResponse{
+		Data: dto.JobDataResponse{
+			ID:        job.ID,
+			Title:     job.Title,
+			Status:    string(job.Status),
+			CreatedAt: job.CreatedAt,
+		},
+		Message: "Job berhasil dibuat",
+	}
+
+	response.JSON(w, http.StatusCreated, res)
 }

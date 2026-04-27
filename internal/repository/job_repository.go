@@ -1,8 +1,7 @@
 package repository
-
 import (
 	"fmt"
-
+	
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
 	"gorm.io/gorm"
 )
@@ -12,6 +11,10 @@ type JobRepository struct {
 }
 
 func NewJobRepository(db *gorm.DB) *JobRepository { return &JobRepository{db: db} }
+
+func (r *JobRepository) Create(job *domain.Job) error {
+	return r.db.Create(job).Error
+}
 
 type JobFilter struct {
 	Search     string
