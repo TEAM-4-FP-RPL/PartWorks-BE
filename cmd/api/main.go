@@ -40,7 +40,11 @@ func main() {
 	authUC := usecase.NewAuthUsecase(userRepo)
 	authH := handler.NewAuthHandler(authUC)
 
-	router := routes.NewRouter(authH)
+	jobRepo := repository.NewJobRepository(db)
+	jobUC := usecase.NewJobUsecase(jobRepo)
+	jobH := handler.NewJobHandler(jobUC)
+
+	router := routes.NewRouter(authH, jobH)
 
 	port := config.GetPort()
 	srv := &http.Server{Addr: ":" + port, Handler: router}

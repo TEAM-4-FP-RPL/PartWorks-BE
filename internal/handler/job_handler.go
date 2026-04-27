@@ -1,1 +1,122 @@
 package handler
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/dto"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/response"
+)
+
+type JobHandler struct {
+	uc *usecase.JobUsecase
+}
+
+func NewJobHandler(uc *usecase.JobUsecase) *JobHandler { return &JobHandler{uc: uc} }
+
+func dayName(n int) string {
+	switch n {
+	case 1:
+		return "monday"
+	case 2:
+		return "tuesday"
+	case 3:
+		return "wednesday"
+	case 4:
+		return "thursday"
+	case 5:
+		return "friday"
+	case 6:
+		return "saturday"
+	case 7:
+		return "sunday"
+	default:
+		return "unknown"
+	}
+}
+
+func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	q := r.URL.Query()
+	search := strings.TrimSpace(q.Get("search"))
+	catIDStr := strings.TrimSpace(q.Get("category_id"))
+	typ := strings.TrimSpace(q.Get("type"))
+	location := strings.TrimSpace(q.Get("location"))
+	status := strings.TrimSpace(q.Get("status"))
+	pageStr := strings.TrimSpace(q.Get("page"))
+	limitStr := strings.TrimSpace(q.Get("limit"))
+
+	if status == "" {
+		status = string("open")
+	}
+	var catID *int
+	if catIDStr != "" {
+		if n, err := strconv.Atoi(catIDStr); err == nil {
+			catID = &n
+		}
+	}
+	page := 1
+	if pageStr != "" {
+		if n, err := strconv.Atoi(pageStr); err == nil && n > 0 { page = n }
+	}
+	limit := 10
+	if limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 { limit = n }
+	}
+
+	jobs, total, err := h.uc.GetAll(usecase.JobFilter{
+		Search:     search,
+		CategoryID: catID,
+		Type:       typ,
+		Location:   location,
+		Status:     status,
+		Page:       page,
+		Limit:      limit,
+	})
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	out := make([]dto.JobResponse, 0, len(jobs))
+	for _, j := range jobs {
+		cat := dto.CategoryDTO{ID: j.CategoryID}
+		emp := dto.EmployerDTO{}
+		if j.Employer != nil {
+			emp.ID = j.Employer.ID.String()
+			emp.CompanyName = j.Employer.CompanyName
+			emp.LogoURL = j.Employer.LogoURL
+		}
+		schedules := make([]dto.JobScheduleDTO, 0, len(j.Schedules))
+		for _, s := range j.Schedules {
+			schedules = append(schedules, dto.JobScheduleDTO{Day: dayName(s.Day), StartTime: s.StartTime, EndTime: s.EndTime})
+		}
+		out = append(out, dto.JobResponse{
+			ID:        j.ID.String(),
+			Title:     j.Title,
+			Type:      string(j.Type),
+			Status:    string(j.Status),
+			Salary:    j.Salary,
+			Location:  j.Location,
+			Category:  cat,
+			Employer:  emp,
+			Schedules: schedules,
+			CreatedAt: j.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"data": out,
+		"meta": map[string]interface{}{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+		},
+	})
+}
