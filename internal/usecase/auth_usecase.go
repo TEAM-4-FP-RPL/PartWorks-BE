@@ -7,6 +7,9 @@ import (
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/repository"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/hash"      
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/jwt"       
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/validator"
 	"github.com/google/uuid"
 )
 
@@ -26,11 +29,9 @@ func NewAuthUsecase(repo *repository.UserRepository) *AuthUsecase {
 }
 
 func (uc *AuthUsecase) Register(email, password, role string) (*domain.User, string, error) {
-
-	/* if err := validator.ValidateEmail(email); err != nil {
+	if err := validator.ValidateEmail(email); err != nil {
 		return nil, "", err
 	}
-	*/
 
 	if role == "" {
 		role = string(domain.RoleWorker)
@@ -40,7 +41,10 @@ func (uc *AuthUsecase) Register(email, password, role string) (*domain.User, str
 		return nil, "", domain.ErrConflict
 	}
 
-	h := "hashed_password_placeholder"
+	h, err := hash.HashPassword(password)
+	if err != nil {
+		return nil, "", err
+	}
 
 	user := &domain.User{
 		ID:           uuid.New(),
@@ -53,7 +57,8 @@ func (uc *AuthUsecase) Register(email, password, role string) (*domain.User, str
 		return nil, "", err
 	}
 
-	return user, "dummy-token-register", nil
+	token, err := jwt.GenerateToken(user.ID.String(), user.Email, string(user.Role), uc.jwtTTL)
+	return user, token, err
 }
 
 func (uc *AuthUsecase) Login(email, password string) (*domain.User, string, error) {
@@ -62,5 +67,10 @@ func (uc *AuthUsecase) Login(email, password string) (*domain.User, string, erro
 		return nil, "", err
 	}
 
-	return user, "dummy-token-login", nil
+	if err := hash.CheckPassword(*user.PasswordHash, password); err != nil {
+		return nil, "", domain.ErrNotFound // Atau error unauthorized
+	}
+
+	token, err := jwt.GenerateToken(user.ID.String(), user.Email, string(user.Role), uc.jwtTTL)
+	return user, token, err
 }

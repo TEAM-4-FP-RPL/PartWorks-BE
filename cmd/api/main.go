@@ -37,10 +37,13 @@ func main() {
 	log.Println("database connected")
 
 	jobRepo := repository.NewJobRepository(db)
-	jobUsecase := usecase.NewJobUsecase(jobRepo)
-	jobHandler := handler.NewJobHandler(jobUsecase)
+	userRepo := repository.NewUserRepository(db)
 
-	authH := handler.NewAuthHandler() 
+	jobUsecase := usecase.NewJobUsecase(jobRepo)
+	authUC := usecase.NewAuthUsecase(userRepo)
+
+	jobHandler := handler.NewJobHandler(jobUsecase)
+	authH := handler.NewAuthHandler(authUC)
 
 	router := routes.NewRouter(authH, jobHandler)
 
@@ -49,9 +52,14 @@ func main() {
 		port = "8080"
 	}
 
-	srv := &http.Server{Addr: ":" + port, Handler: router}
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+	}
 	
-	log.Printf("listening on :%s", port)
+	log.Printf("server starting on port :%s", port)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server failed: %v", err)
 	}
