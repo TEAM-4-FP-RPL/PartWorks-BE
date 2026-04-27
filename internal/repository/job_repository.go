@@ -9,6 +9,7 @@ import (
 
 type JobRepository interface {
 	GetByEmployerID(ctx context.Context, employerID uuid.UUID) ([]domain.Job, error)
+	Delete(ctx context.Context, id uuid.UUID, employerID uuid.UUID) error
 }
 
 type jobRepository struct {
@@ -26,4 +27,8 @@ func (r *jobRepository) GetByEmployerID(ctx context.Context, employerID uuid.UUI
 		return nil, err
 	}
 	return jobs, nil
+}
+
+func (r *jobRepository) Delete(ctx context.Context, id uuid.UUID, employerID uuid.UUID) error {
+	return r.db.WithContext(ctx).Where("id = ? AND employer_id = ?", id, employerID).Delete(&domain.Job{}).Error
 }
