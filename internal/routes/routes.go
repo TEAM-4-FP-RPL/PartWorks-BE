@@ -28,5 +28,14 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		}
 	})
 
+	mux.HandleFunc("/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			middleware.Auth(middleware.Roles("employer")(http.HandlerFunc(jobH.Update))).ServeHTTP(w, r)
+		default:
+			response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	})
+
 	return middleware.CORS(middleware.Log(mux))
 }

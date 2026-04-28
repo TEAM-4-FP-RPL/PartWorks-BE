@@ -1,8 +1,10 @@
 package repository
 import (
+	"errors"
 	"fmt"
-	
+
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -14,6 +16,38 @@ func NewJobRepository(db *gorm.DB) *JobRepository { return &JobRepository{db: db
 
 func (r *JobRepository) Create(job *domain.Job) error {
 	return r.db.Create(job).Error
+}
+
+func (r *JobRepository) FindByID(id uuid.UUID) (*domain.Job, error) {
+	var job domain.Job
+	if err := r.db.Preload("Schedules").First(&job, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("find job by id: %w", err)
+	}
+	return &job, nil
+}
+
+func (r *JobRepository) Update(job *domain.Job) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(job).Updates(map[string]interface{}{
+			"title":  job.Title,
+			"salary": job.Salary,
+			"status": job.Status,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("job_id = ?", job.ID).Delete(&domain.JobSchedule{}).Error; err != nil {
+			return err
+		}
+		if len(job.Schedules) > 0 {
+			if err := tx.Create(&job.Schedules).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 type JobFilter struct {

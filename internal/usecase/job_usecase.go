@@ -39,6 +39,27 @@ func (uc *JobUsecase) GetAll(filter JobFilter) ([]domain.Job, int64, error) {
 	return jobs, total, nil
 }
 
+func (uc *JobUsecase) Update(jobID, employerID uuid.UUID, req *domain.Job) (*domain.Job, error) {
+	existing, err := uc.repo.FindByID(jobID)
+	if err != nil {
+		return nil, err
+	}
+	if existing.EmployerID != employerID {
+		return nil, domain.ErrForbidden
+	}
+	existing.Title = req.Title
+	existing.Salary = req.Salary
+	existing.Status = req.Status
+	existing.Schedules = req.Schedules
+	for i := range existing.Schedules {
+		existing.Schedules[i].JobID = jobID
+	}
+	if err := uc.repo.Update(existing); err != nil {
+		return nil, fmt.Errorf("usecase update job: %w", err)
+	}
+	return existing, nil
+}
+
 func (uc *JobUsecase) Create(job *domain.Job) error {
 	job.ID = uuid.New()
 	job.Status = domain.JobStatusOpen

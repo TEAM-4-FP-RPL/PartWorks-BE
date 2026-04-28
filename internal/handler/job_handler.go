@@ -1,6 +1,7 @@
 package handler
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -214,4 +215,79 @@ func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusCreated, res)
+}
+
+func (h *JobHandler) Update(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	val := r.Context().Value(middleware.UserIDKey)
+	if val == nil {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	userIDStr, ok := val.(string)
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	employerID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, "invalid user id")
+		return
+	}
+
+	jobID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+
+	var req dto.UpdateJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	job := &domain.Job{
+		Title:  req.Title,
+		Salary: req.Salary,
+		Status: domain.JobStatus(req.Status),
+	}
+	for _, s := range req.Schedules {
+		day := mapDayToInt(s.Day)
+		if day == 0 {
+			response.Error(w, http.StatusBadRequest, "invalid day name: "+s.Day)
+			return
+		}
+		job.Schedules = append(job.Schedules, domain.JobSchedule{
+			Day:       day,
+			StartTime: s.StartTime,
+			EndTime:   s.EndTime,
+		})
+	}
+
+	updated, err := h.uc.Update(jobID, employerID, job)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+			response.Error(w, http.StatusNotFound, "job not found")
+		case errors.Is(err, domain.ErrForbidden):
+			response.Error(w, http.StatusForbidden, "forbidden")
+		default:
+			response.Error(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	response.JSON(w, http.StatusOK, dto.UpdateJobResponse{
+		Data: dto.UpdateJobDataResponse{
+			ID:        updated.ID,
+			Title:     updated.Title,
+			UpdatedAt: updated.UpdatedAt,
+		},
+		Message: "Job berhasil diupdate",
+	})
 }

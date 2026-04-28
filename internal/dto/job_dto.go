@@ -65,3 +65,21 @@ type CreateJobResponse struct {
 	Data    JobDataResponse `json:"data"`
 	Message string          `json:"message"`
 }
+
+type UpdateJobRequest struct {
+	Title     string               `json:"title"`
+	Salary    int64                `json:"salary"`
+	Status    string               `json:"status"`
+	Schedules []JobScheduleRequest `json:"schedules"`
+}
+
+type UpdateJobDataResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type UpdateJobResponse struct {
+	Data    UpdateJobDataResponse `json:"data"`
+	Message string               `json:"message"`
+}
