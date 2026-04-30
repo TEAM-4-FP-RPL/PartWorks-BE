@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -64,4 +65,23 @@ func (r *JobRepository) List(filter JobFilter) ([]domain.Job, int64, error) {
 	}
 
 	return jobs, total, nil
+}
+
+func (r *JobRepository) GetByID(id uuid.UUID) (*domain.Job, *domain.Category, error) {
+	var job domain.Job
+	if err := r.db.Preload("Employer").Preload("Schedules").First(&job, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil, gorm.ErrRecordNotFound
+		}
+		return nil, nil, fmt.Errorf("get job by id: %w", err)
+	}
+	var cat domain.Category
+	if err := r.db.First(&cat, job.CategoryID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// category not found, return job without category
+			return &job, nil, nil
+		}
+		return nil, nil, fmt.Errorf("get category: %w", err)
+	}
+	return &job, &cat, nil
 }

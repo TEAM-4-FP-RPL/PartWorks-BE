@@ -9,6 +9,7 @@ type EmployerDTO struct {
 	ID          string `json:"id"`
 	CompanyName string `json:"company_name"`
 	LogoURL     string `json:"logo_url"`
+	Description string `json:"description,omitempty"`
 }
 
 type JobScheduleDTO struct {
@@ -18,15 +19,17 @@ type JobScheduleDTO struct {
 }
 
 type JobResponse struct {
-	ID        string           `json:"id"`
-	Title     string           `json:"title"`
-	Type      string           `json:"type"`
-	Status    string           `json:"status"`
-	Salary    int64            `json:"salary"`
-	Location  string           `json:"location"`
-	Category  CategoryDTO      `json:"category"`
-	Employer  EmployerDTO      `json:"employer"`
-	Schedules []JobScheduleDTO `json:"schedules"`
-	CreatedAt string           `json:"created_at"`
+	ID               string           `json:"id"`
+	Title            string           `json:"title"`
+	Description      string           `json:"description"`
+	Type             string           `json:"type"`
+	Status           string           `json:"status"`
+	Salary           int64            `json:"salary"`
+	Location         string           `json:"location"`
+	Category         CategoryDTO      `json:"category"`
+	Employer         EmployerDTO      `json:"employer"`
+	Schedules        []JobScheduleDTO `json:"schedules"`
+	WorkHoursPerWeek int              `json:"work_hours_per_week"`
+	CreatedAt        string           `json:"created_at"`
 }
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/dto"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/response"
+	"gorm.io/gorm"
 )
 
 type JobHandler struct {
@@ -119,4 +121,62 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 			"total": total,
 		},
 	})
+}
+
+func (h *JobHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+	job, cat, err := h.uc.GetByID(id)
+	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid job id")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "job not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	catDTO := dto.CategoryDTO{ID: job.CategoryID}
+	if cat != nil {
+		catDTO.Name = cat.Name
+	}
+	emp := dto.EmployerDTO{}
+	if job.Employer != nil {
+		emp.ID = job.Employer.ID.String()
+		emp.CompanyName = job.Employer.CompanyName
+		emp.LogoURL = job.Employer.LogoURL
+		emp.Description = job.Employer.Description
+	}
+	schedules := make([]dto.JobScheduleDTO, 0, len(job.Schedules))
+	for _, s := range job.Schedules {
+		schedules = append(schedules, dto.JobScheduleDTO{Day: dayName(s.Day), StartTime: s.StartTime, EndTime: s.EndTime})
+	}
+
+	out := dto.JobResponse{
+		ID:               job.ID.String(),
+		Title:            job.Title,
+		Description:      job.Description,
+		Type:             string(job.Type),
+		Status:           string(job.Status),
+		Salary:           job.Salary,
+		Location:         job.Location,
+		Category:         catDTO,
+		Employer:         emp,
+		Schedules:        schedules,
+		WorkHoursPerWeek: 0,
+		CreatedAt:        job.CreatedAt.Format(time.RFC3339),
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{"data": out})
 }
