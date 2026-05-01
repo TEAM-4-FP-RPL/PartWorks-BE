@@ -107,6 +107,25 @@ func (r *JobRepository) GetCategoryByID(id int) (*domain.Category, error) {
 	return &c, nil
 }
 
+func (r *JobRepository) Delete(jobID uuid.UUID) error {
+	tx := r.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := tx.Where("job_id = ?", jobID).Delete(&domain.JobSchedule{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Where("id = ?", jobID).Delete(&domain.Job{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
+}
+
 type JobFilter struct {
 	Search     string
 	CategoryID *int

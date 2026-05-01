@@ -226,3 +226,50 @@ func (uc *JobUsecase) Update(userIDStr string, jobIDStr string, req dto.UpdateJo
 	}
 	return job, nil
 }
+
+func (uc *JobUsecase) Delete(userIDStr string, jobIDStr string) error {
+	uid, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid user id: %w", err)
+	}
+	user, err := uc.userRepo.GetByID(uid)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+	if string(user.Role) != string(domain.RoleEmployer) {
+		return fmt.Errorf("user is not employer")
+	}
+	jid, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid job id: %w", err)
+	}
+	job, _, err := uc.repo.GetByID(jid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return fmt.Errorf("get job: %w", err)
+	}
+	if job == nil {
+		return gorm.ErrRecordNotFound
+	}
+	owned := false
+	if job.EmployerID == uid {
+		owned = true
+	}
+	if job.Employer != nil && job.Employer.UserID == uid {
+		owned = true
+	}
+	if !owned {
+		if empProfile, err := uc.repo.GetEmployerByUserID(uid); err == nil && empProfile != nil && empProfile.ID == job.EmployerID {
+			owned = true
+		}
+	}
+	if !owned {
+		return ErrForbidden
+	}
+	if err := uc.repo.Delete(job.ID); err != nil {
+		return fmt.Errorf("delete job: %w", err)
+	}
+	return nil
+}

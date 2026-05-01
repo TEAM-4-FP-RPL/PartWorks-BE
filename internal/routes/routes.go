@@ -31,6 +31,8 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 			jobH.GetByID(w, r)
 		case http.MethodPatch:
 			jobH.Update(w, r)
+		case http.MethodDelete:
+			jobH.Delete(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}

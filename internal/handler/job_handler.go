@@ -324,3 +324,37 @@ func (h *JobHandler) Update(w http.ResponseWriter, r *http.Request) {
 		"message": "Job berhasil diupdate",
 	})
 }
+
+func (h *JobHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can delete jobs")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+	if err := h.uc.Delete(userID, id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "job not found")
+			return
+		}
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "not allowed")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"message": "Job berhasil dihapus"})
+}
