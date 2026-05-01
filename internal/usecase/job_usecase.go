@@ -26,6 +26,27 @@ var dayToInt = map[string]int{
 	"sunday":    7,
 }
 
+func dayName(n int) string {
+	switch n {
+	case 1:
+		return "monday"
+	case 2:
+		return "tuesday"
+	case 3:
+		return "wednesday"
+	case 4:
+		return "thursday"
+	case 5:
+		return "friday"
+	case 6:
+		return "saturday"
+	case 7:
+		return "sunday"
+	default:
+		return "unknown"
+	}
+}
+
 type JobUsecase struct {
 	repo     *repository.JobRepository
 	userRepo *repository.UserRepository
@@ -272,4 +293,69 @@ func (uc *JobUsecase) Delete(userIDStr string, jobIDStr string) error {
 		return fmt.Errorf("delete job: %w", err)
 	}
 	return nil
+}
+
+func (uc *JobUsecase) GetEmployerJobs(userIDStr string, filter JobFilter) ([]dto.JobResponse, int64, error) {
+	uid, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid user id: %w", err)
+	}
+	user, err := uc.userRepo.GetByID(uid)
+	if err != nil {
+		return nil, 0, fmt.Errorf("get user: %w", err)
+	}
+	if string(user.Role) != string(domain.RoleEmployer) {
+		return nil, 0, fmt.Errorf("user is not employer")
+	}
+	emp, err := uc.repo.GetEmployerByUserID(uid)
+	var employerID uuid.UUID
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			employerID = uid
+		} else {
+			return nil, 0, fmt.Errorf("get employer: %w", err)
+		}
+	} else {
+		employerID = emp.ID
+	}
+	jobs, total, err := uc.repo.ListByEmployer(employerID, repository.JobFilter{
+		Status: filter.Status,
+		Page:   filter.Page,
+		Limit:  filter.Limit,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list employer jobs: %w", err)
+	}
+	out := make([]dto.JobResponse, 0, len(jobs))
+	for _, j := range jobs {
+		catDTO := dto.CategoryDTO{ID: j.CategoryID}
+		if c, err := uc.repo.GetCategoryByID(j.CategoryID); err == nil && c != nil {
+			catDTO.Name = c.Name
+		}
+		empDTO := dto.EmployerDTO{}
+		if j.Employer != nil {
+			empDTO.ID = j.Employer.ID.String()
+			empDTO.CompanyName = j.Employer.CompanyName
+			empDTO.LogoURL = j.Employer.LogoURL
+		}
+		schedules := make([]dto.JobScheduleDTO, 0, len(j.Schedules))
+		for _, s := range j.Schedules {
+			schedules = append(schedules, dto.JobScheduleDTO{Day: dayName(s.Day), StartTime: s.StartTime, EndTime: s.EndTime})
+		}
+		count, _ := uc.repo.CountApplications(j.ID)
+		out = append(out, dto.JobResponse{
+			ID:              j.ID.String(),
+			Title:           j.Title,
+			Type:            string(j.Type),
+			Status:          string(j.Status),
+			Salary:          j.Salary,
+			Location:        j.Location,
+			Category:        catDTO,
+			Employer:        empDTO,
+			TotalApplicants: count,
+			Schedules:       schedules,
+			CreatedAt:       j.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return out, total, nil
 }

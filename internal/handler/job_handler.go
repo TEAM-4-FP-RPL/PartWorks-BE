@@ -325,6 +325,46 @@ func (h *JobHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *JobHandler) GetEmployerJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+	q := r.URL.Query()
+	status := strings.TrimSpace(q.Get("status"))
+	page := 1
+	if p := strings.TrimSpace(q.Get("page")); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	limit := 10
+	if l := strings.TrimSpace(q.Get("limit")); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	jobs, total, err := h.uc.GetEmployerJobs(userID, usecase.JobFilter{Status: status, Page: page, Limit: limit})
+	if err != nil {
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"data": jobs, "meta": map[string]any{"page": page, "limit": limit, "total": total}})
+}
+
 func (h *JobHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -349,7 +389,7 @@ func (h *JobHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusNotFound, "job not found")
 			return
 		}
-		if errors.Is(err, usecase.ErrForbidden) {
+		if errors.Is(err, usecase.ErrForbidden) || strings.Contains(err.Error(), "user is not employer") {
 			response.Error(w, http.StatusForbidden, "not allowed")
 			return
 		}

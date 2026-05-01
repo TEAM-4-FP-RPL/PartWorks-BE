@@ -55,6 +55,7 @@ type JobResponse struct {
 	Location         string           `json:"location"`
 	Category         CategoryDTO      `json:"category"`
 	Employer         EmployerDTO      `json:"employer"`
+	TotalApplicants  int64            `json:"total_applicants"`
 	Schedules        []JobScheduleDTO `json:"schedules"`
 	WorkHoursPerWeek int              `json:"work_hours_per_week"`
 	CreatedAt        string           `json:"created_at"`

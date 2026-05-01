@@ -136,6 +136,37 @@ type JobFilter struct {
 	Limit      int
 }
 
+func (r *JobRepository) ListByEmployer(employerID uuid.UUID, filter JobFilter) ([]domain.Job, int64, error) {
+	var jobs []domain.Job
+	var total int64
+	db := r.db.Model(&domain.Job{}).Where("employer_id = ?", employerID)
+	if filter.Status != "" {
+		db = db.Where("status = ?", filter.Status)
+	}
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.Limit <= 0 {
+		filter.Limit = 10
+	}
+	off := (filter.Page - 1) * filter.Limit
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("count employer jobs: %w", err)
+	}
+	if err := db.Preload("Employer").Preload("Schedules").Order("created_at desc").Offset(off).Limit(filter.Limit).Find(&jobs).Error; err != nil {
+		return nil, 0, fmt.Errorf("list employer jobs: %w", err)
+	}
+	return jobs, total, nil
+}
+
+func (r *JobRepository) CountApplications(jobID uuid.UUID) (int64, error) {
+	var cnt int64
+	if err := r.db.Model(&domain.Application{}).Where("job_id = ?", jobID).Count(&cnt).Error; err != nil {
+		return 0, fmt.Errorf("count applications: %w", err)
+	}
+	return cnt, nil
+}
+
 func (r *JobRepository) List(filter JobFilter) ([]domain.Job, int64, error) {
 	var jobs []domain.Job
 	var total int64

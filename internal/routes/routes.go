@@ -39,6 +39,13 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 	}
 	mux.HandleFunc("/jobs", jobsHandler)
 	mux.HandleFunc("/jobs/", jobsHandler)
+	mux.HandleFunc("/employer/jobs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			jobH.GetEmployerJobs(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
 	// add more routes here as project grows
 	return middleware.CORS(middleware.Log(mux))
 }
