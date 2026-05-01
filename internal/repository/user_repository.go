@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/domain"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +29,17 @@ func (r *UserRepository) Create(user *domain.User) error {
 func (r *UserRepository) GetByEmail(email string) (*domain.User, error) {
 	var u domain.User
 	if err := r.db.Where("email = ?", email).First(&u).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *UserRepository) GetByID(id uuid.UUID) (*domain.User, error) {
+	var u domain.User
+	if err := r.db.First(&u, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, domain.ErrNotFound
 		}

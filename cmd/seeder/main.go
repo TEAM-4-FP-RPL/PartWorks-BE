@@ -71,17 +71,23 @@ func main() {
 	}
 
 	if cats, err := loadJSON[domain.Category]("internal/seeder/categories.json"); err == nil && len(cats) > 0 {
-		if err := insert(&cats); err != nil { log.Fatalf("insert categories: %v", err) }
+		if err := insert(&cats); err != nil {
+			log.Fatalf("insert categories: %v", err)
+		}
 		fmt.Printf("seeded %d categories\n", len(cats))
 	}
 
 	if us, err := loadJSON[domain.User]("internal/seeder/users.json"); err == nil && len(us) > 0 {
-		if err := insert(&us); err != nil { log.Fatalf("insert users: %v", err) }
+		if err := insert(&us); err != nil {
+			log.Fatalf("insert users: %v", err)
+		}
 		fmt.Printf("seeded %d users\n", len(us))
 	}
 
 	if emps, err := loadJSON[domain.EmployerProfile]("internal/seeder/employers.json"); err == nil && len(emps) > 0 {
-		if err := insert(&emps); err != nil { log.Fatalf("insert employers: %v", err) }
+		if err := insert(&emps); err != nil {
+			log.Fatalf("insert employers: %v", err)
+		}
 		fmt.Printf("seeded %d employers\n", len(emps))
 	}
 
@@ -91,32 +97,44 @@ func main() {
 				ws[i].ID = uuid.New()
 			}
 		}
-		if err := insert(&ws); err != nil { log.Fatalf("insert workers: %v", err) }
+		if err := insert(&ws); err != nil {
+			log.Fatalf("insert workers: %v", err)
+		}
 		fmt.Printf("seeded %d workers\n", len(ws))
 	}
 
 	if cvs, err := loadJSON[domain.WorkerCV]("internal/seeder/cvs.json"); err == nil && len(cvs) > 0 {
-		if err := insert(&cvs); err != nil { log.Fatalf("insert cvs: %v", err) }
+		if err := insert(&cvs); err != nil {
+			log.Fatalf("insert cvs: %v", err)
+		}
 		fmt.Printf("seeded %d cvs\n", len(cvs))
 	}
 
 	if av, err := loadJSON[domain.Availability]("internal/seeder/availabilities.json"); err == nil && len(av) > 0 {
-		if err := insert(&av); err != nil { log.Fatalf("insert availabilities: %v", err) }
+		if err := insert(&av); err != nil {
+			log.Fatalf("insert availabilities: %v", err)
+		}
 		fmt.Printf("seeded %d availabilities\n", len(av))
 	}
 
 	if jobs, err := loadJSON[domain.Job]("internal/seeder/jobs.json"); err == nil && len(jobs) > 0 {
-		if err := insert(&jobs); err != nil { log.Fatalf("insert jobs: %v", err) }
+		if err := insert(&jobs); err != nil {
+			log.Fatalf("insert jobs: %v", err)
+		}
 		fmt.Printf("seeded %d jobs\n", len(jobs))
 	}
 
 	if js, err := loadJSON[domain.JobSchedule]("internal/seeder/job_schedules.json"); err == nil && len(js) > 0 {
-		if err := insert(&js); err != nil { log.Fatalf("insert job_schedules: %v", err) }
+		if err := insert(&js); err != nil {
+			log.Fatalf("insert job_schedules: %v", err)
+		}
 		fmt.Printf("seeded %d job_schedules\n", len(js))
 	}
 
 	if apps, err := loadJSON[domain.Application]("internal/seeder/applications.json"); err == nil && len(apps) > 0 {
-		if err := insert(&apps); err != nil { log.Fatalf("insert applications: %v", err) }
+		if err := insert(&apps); err != nil {
+			log.Fatalf("insert applications: %v", err)
+		}
 		fmt.Printf("seeded %d applications\n", len(apps))
 	}
 

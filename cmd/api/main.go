@@ -41,7 +41,7 @@ func main() {
 	authH := handler.NewAuthHandler(authUC)
 
 	jobRepo := repository.NewJobRepository(db)
-	jobUC := usecase.NewJobUsecase(jobRepo)
+	jobUC := usecase.NewJobUsecase(jobRepo, userRepo)
 	jobH := handler.NewJobHandler(jobUC)
 
 	router := routes.NewRouter(authH, jobH)

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/dto"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/jwt"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/response"
 	"gorm.io/gorm"
 )
@@ -65,11 +68,15 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	}
 	page := 1
 	if pageStr != "" {
-		if n, err := strconv.Atoi(pageStr); err == nil && n > 0 { page = n }
+		if n, err := strconv.Atoi(pageStr); err == nil && n > 0 {
+			page = n
+		}
 	}
 	limit := 10
 	if limitStr != "" {
-		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 { limit = n }
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+			limit = n
+		}
 	}
 
 	jobs, total, err := h.uc.GetAll(usecase.JobFilter{
@@ -179,4 +186,141 @@ func (h *JobHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{"data": out})
+}
+
+func extractAuth(r *http.Request) (string, string, error) {
+	auth := r.Header.Get("Authorization")
+	if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
+		return "", "", fmt.Errorf("missing authorization token")
+	}
+	tkn := strings.TrimPrefix(auth, "Bearer ")
+	claims, err := jwt.ParseToken(tkn)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid token")
+	}
+	roleV, ok := claims["role"]
+	if !ok {
+		return "", "", fmt.Errorf("invalid token")
+	}
+	roleStr, _ := roleV.(string)
+	sub, ok := claims["sub"]
+	if !ok {
+		return "", "", fmt.Errorf("invalid token")
+	}
+	subStr, _ := sub.(string)
+	return subStr, roleStr, nil
+}
+
+func (h *JobHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can create jobs")
+		return
+	}
+	subStr := userID
+
+	var req dto.CreateJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if req.Title == "" || req.CategoryID == 0 {
+		response.Error(w, http.StatusBadRequest, "missing required fields")
+		return
+	}
+	job, err := h.uc.Create(subStr, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "category not found") {
+			response.Error(w, http.StatusBadRequest, "category not found")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can create jobs")
+			return
+		}
+		if strings.Contains(err.Error(), "invalid day") {
+			response.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusCreated, map[string]any{
+		"data": map[string]any{
+			"id":         job.ID.String(),
+			"title":      job.Title,
+			"status":     string(job.Status),
+			"created_at": job.CreatedAt.Format(time.RFC3339),
+		},
+		"message": "Job berhasil dibuat",
+	})
+}
+
+func (h *JobHandler) Update(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can update jobs")
+		return
+	}
+	subStr := userID
+
+	id := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+
+	var req dto.UpdateJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	job, err := h.uc.Update(subStr, id, req)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "job not found")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can update jobs")
+			return
+		}
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "not allowed")
+			return
+		}
+		if strings.Contains(err.Error(), "invalid day") {
+			response.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": map[string]any{
+			"id":         job.ID.String(),
+			"title":      job.Title,
+			"updated_at": job.UpdatedAt.Format(time.RFC3339),
+		},
+		"message": "Job berhasil diupdate",
+	})
 }
