@@ -34,7 +34,6 @@ type CreateJobRequest struct {
 	Schedules   []CreateJobScheduleRequest `json:"schedules"`
 }
 
-// UpdateJobRequest uses pointer fields for optional values
 type UpdateJobRequest struct {
 	Title       *string                     `json:"title,omitempty"`
 	Description *string                     `json:"description,omitempty"`

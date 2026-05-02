@@ -28,7 +28,6 @@ func loadJSON[T any](path string) ([]T, error) {
 }
 
 func main() {
-	// load .env (if present) so run "go run" picks up env vars from .env
 	_ = godotenv.Load()
 
 	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))

@@ -365,6 +365,374 @@ func (h *JobHandler) GetEmployerJobs(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{"data": jobs, "meta": map[string]any{"page": page, "limit": limit, "total": total}})
 }
 
+func (h *JobHandler) GetWorkerApplications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "worker" {
+		response.Error(w, http.StatusForbidden, "only workers can access this resource")
+		return
+	}
+
+	q := r.URL.Query()
+	status := strings.TrimSpace(q.Get("status"))
+	page := 1
+	if p := strings.TrimSpace(q.Get("page")); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	limit := 10
+	if l := strings.TrimSpace(q.Get("limit")); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	apps, cvCats, total, err := h.uc.ListWorkerApplications(userID, usecase.ApplicationFilter{Status: status, Page: page, Limit: limit})
+	if err != nil {
+		if strings.Contains(err.Error(), "user is not worker") {
+			response.Error(w, http.StatusForbidden, "only workers can access this resource")
+			return
+		}
+		if strings.Contains(err.Error(), "worker profile not found") {
+			response.Error(w, http.StatusBadRequest, "worker profile not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	out := make([]dto.WorkerApplicationItemDTO, 0, len(apps))
+	for _, a := range apps {
+		item := dto.WorkerApplicationItemDTO{
+			ID:        a.ID.String(),
+			Status:    a.Status,
+			CoverNote: a.CoverNote,
+			AppliedAt: a.AppliedAt.Format(time.RFC3339),
+		}
+		if a.Job != nil {
+			item.Job.ID = a.Job.ID.String()
+			item.Job.Title = a.Job.Title
+			item.Job.Type = string(a.Job.Type)
+			item.Job.Location = a.Job.Location
+			if a.Job.Employer != nil {
+				item.Job.Employer.CompanyName = a.Job.Employer.CompanyName
+				item.Job.Employer.LogoURL = a.Job.Employer.LogoURL
+			}
+		}
+		if a.CV != nil {
+			cat := cvCats[a.CV.CategoryID]
+			item.CV = &dto.WorkerApplicationsCVDTo{
+				ID:      a.CV.ID.String(),
+				FileURL: a.CV.FileURL,
+				Category: dto.WorkerApplicationsCVCategoryDTO{
+					ID:   a.CV.CategoryID,
+					Name: cat.Name,
+				},
+			}
+		}
+		out = append(out, item)
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": out,
+		"meta": map[string]any{"page": page, "limit": limit, "total": total},
+	})
+}
+
+func (h *JobHandler) GetEmployerApplications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	q := r.URL.Query()
+	status := strings.TrimSpace(q.Get("status"))
+	page := 1
+	if p := strings.TrimSpace(q.Get("page")); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	limit := 10
+	if l := strings.TrimSpace(q.Get("limit")); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	apps, cvCats, total, err := h.uc.ListEmployerApplications(userID, usecase.ApplicationFilter{Status: status, Page: page, Limit: limit})
+	if err != nil {
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	out := make([]dto.EmployerApplicationItemDTO, 0, len(apps))
+	for _, a := range apps {
+		item := dto.EmployerApplicationItemDTO{
+			ID:        a.ID.String(),
+			Status:    a.Status,
+			AppliedAt: a.AppliedAt.Format(time.RFC3339),
+		}
+		if a.Job != nil {
+			item.Job.ID = a.Job.ID.String()
+			item.Job.Title = a.Job.Title
+		}
+		if a.Worker != nil {
+			item.Worker.ID = a.Worker.ID.String()
+			item.Worker.FullName = a.Worker.FullName
+			item.Worker.PhotoURL = a.Worker.PhotoURL
+		}
+		if a.CV != nil {
+			cat := cvCats[a.CV.CategoryID]
+			item.CV = &dto.EmployerApplicationsCVDTO{
+				ID:      a.CV.ID.String(),
+				FileURL: a.CV.FileURL,
+				Category: dto.EmployerApplicationsCVCategoryDTO{
+					ID:   a.CV.CategoryID,
+					Name: cat.Name,
+				},
+			}
+		}
+		out = append(out, item)
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": out,
+		"meta": map[string]any{"page": page, "limit": limit, "total": total},
+	})
+}
+
+func (h *JobHandler) GetEmployerJobApplications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	p := strings.TrimPrefix(r.URL.Path, "/employer/jobs/")
+	p = strings.Trim(p, "/")
+	parts := strings.Split(p, "/")
+	if len(parts) != 2 || parts[1] != "applications" || parts[0] == "" {
+		response.Error(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	jobID := parts[0]
+
+	q := r.URL.Query()
+	status := strings.TrimSpace(q.Get("status"))
+	page := 1
+	if p := strings.TrimSpace(q.Get("page")); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	limit := 10
+	if l := strings.TrimSpace(q.Get("limit")); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	apps, cvCats, total, err := h.uc.ListEmployerJobApplications(userID, jobID, usecase.ApplicationFilter{Status: status, Page: page, Limit: limit})
+	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid job id")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "job not found")
+			return
+		}
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "not allowed")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	out := make([]dto.EmployerJobApplicationItemDTO, 0, len(apps))
+	for _, a := range apps {
+		item := dto.EmployerJobApplicationItemDTO{
+			ID:        a.ID.String(),
+			Status:    a.Status,
+			CoverNote: a.CoverNote,
+			AppliedAt: a.AppliedAt.Format(time.RFC3339),
+		}
+		if a.Worker != nil {
+			item.Worker.ID = a.Worker.ID.String()
+			item.Worker.FullName = a.Worker.FullName
+			item.Worker.PhotoURL = a.Worker.PhotoURL
+			item.Worker.Bio = a.Worker.Bio
+			item.Worker.Skills = a.Worker.Skills
+		}
+		if a.CV != nil {
+			cat := cvCats[a.CV.CategoryID]
+			item.CV = &dto.EmployerApplicationsCVDTO{
+				ID:      a.CV.ID.String(),
+				FileURL: a.CV.FileURL,
+				Category: dto.EmployerApplicationsCVCategoryDTO{
+					ID:   a.CV.CategoryID,
+					Name: cat.Name,
+				},
+			}
+		}
+		out = append(out, item)
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": out,
+		"meta": map[string]any{"page": page, "limit": limit, "total": total},
+	})
+}
+
+func (h *JobHandler) PatchEmployerApplicationStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	p := strings.TrimPrefix(r.URL.Path, "/employer/applications/")
+	p = strings.Trim(p, "/")
+	parts := strings.Split(p, "/")
+	if len(parts) != 2 || parts[1] != "status" || parts[0] == "" {
+		response.Error(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	appID := parts[0]
+
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	app, err := h.uc.UpdateEmployerApplicationStatus(userID, appID, req.Status)
+	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidStatus) {
+			response.Error(w, http.StatusBadRequest, "invalid status")
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid application id")
+			return
+		}
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "not allowed")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "application not found")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": "Status lamaran berhasil diubah",
+		"data": map[string]any{
+			"id":         app.ID.String(),
+			"status":     app.Status,
+			"updated_at": app.UpdatedAt.Format(time.RFC3339),
+		},
+	})
+}
+
+func (h *JobHandler) DeleteWorkerApplication(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "worker" {
+		response.Error(w, http.StatusForbidden, "only workers can access this resource")
+		return
+	}
+
+	appID := strings.TrimPrefix(r.URL.Path, "/worker/applications/")
+	appID = strings.Trim(appID, "/")
+	if appID == "" || strings.Contains(appID, "/") {
+		response.Error(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+
+	if err := h.uc.WithdrawWorkerApplication(userID, appID); err != nil {
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid application id")
+			return
+		}
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "not allowed")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "application not found")
+			return
+		}
+		if strings.Contains(err.Error(), "worker profile not found") {
+			response.Error(w, http.StatusBadRequest, "worker profile not found")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not worker") {
+			response.Error(w, http.StatusForbidden, "only workers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{"message": "Lamaran berhasil ditarik"})
+}
+
 func (h *JobHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -397,4 +765,81 @@ func (h *JobHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]any{"message": "Job berhasil dihapus"})
+}
+
+func (h *JobHandler) Apply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "worker" {
+		response.Error(w, http.StatusForbidden, "only workers can apply to jobs")
+		return
+	}
+
+	p := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	if !strings.HasSuffix(p, "/apply") {
+		response.Error(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	id := strings.TrimSuffix(p, "/apply")
+	id = strings.TrimSuffix(id, "/")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+
+	var req struct {
+		CVID      string `json:"cv_id"`
+		CoverNote string `json:"cover_note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if req.CVID == "" {
+		response.Error(w, http.StatusBadRequest, "missing cv_id")
+		return
+	}
+
+	app, err := h.uc.Apply(userID, id, req.CVID, req.CoverNote)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid cv id") || strings.Contains(err.Error(), "cv not found") || strings.Contains(err.Error(), "cv does not belong") {
+			response.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "already applied") {
+			response.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "worker profile not found") {
+			response.Error(w, http.StatusBadRequest, "worker profile not found")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not worker") {
+			response.Error(w, http.StatusForbidden, "only workers can apply to jobs")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusNotFound, "job not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusCreated, map[string]any{
+		"message": "Lamaran berhasil dikirim",
+		"data": map[string]any{
+			"id":         app.ID.String(),
+			"job_id":     app.JobID.String(),
+			"status":     app.Status,
+			"applied_at": app.AppliedAt.Format(time.RFC3339),
+		},
+	})
 }
