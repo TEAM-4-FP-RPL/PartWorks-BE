@@ -66,6 +66,7 @@ func (r *JobRepository) Create(job *domain.Job) error {
 }
 
 func (r *JobRepository) Update(job *domain.Job) error {
+	job.Schedules = nil
 	if err := r.db.Save(job).Error; err != nil {
 		return err
 	}
