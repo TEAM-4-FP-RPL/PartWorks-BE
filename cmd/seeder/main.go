@@ -127,6 +127,9 @@ func main() {
 		if err := insert(&js); err != nil {
 			log.Fatalf("insert job_schedules: %v", err)
 		}
+		if err := tx.Exec("SELECT setval(pg_get_serial_sequence('job_schedules','id'), COALESCE((SELECT MAX(id) FROM job_schedules), 0))").Error; err != nil {
+			log.Fatalf("reset job_schedules id sequence: %v", err)
+		}
 		fmt.Printf("seeded %d job_schedules\n", len(js))
 	}
 
