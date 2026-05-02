@@ -112,8 +112,8 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		switch r.Method {
 		case http.MethodGet:
 			jobH.GetWorkerProfile(w, r)
-		case http.MethodPut:
-			jobH.PutWorkerProfile(w, r)
+		case http.MethodPatch:
+			jobH.PatchWorkerProfile(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -122,23 +122,33 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		switch r.Method {
 		case http.MethodGet:
 			jobH.GetWorkerAvailability(w, r)
-		case http.MethodPut:
-			jobH.PutWorkerAvailability(w, r)
+		case http.MethodPatch:
+			jobH.PatchWorkerAvailability(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
-	mux.HandleFunc("/worker/cvs", func(w http.ResponseWriter, r *http.Request) {
+	workerCVsCollection := func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			jobH.ListWorkerCVs(w, r)
 		case http.MethodPost:
 			jobH.UploadWorkerCV(w, r)
+		case http.MethodPatch:
+			jobH.PatchWorkerCVs(w, r)
+		case http.MethodDelete:
+			jobH.DeleteWorkerCVs(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-	})
+	}
+	mux.HandleFunc("/worker/cvs", workerCVsCollection)
 	mux.HandleFunc("/worker/cvs/", func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimSuffix(r.URL.Path, "/")
+		if p == "/worker/cvs" {
+			workerCVsCollection(w, r)
+			return
+		}
 		if r.Method == http.MethodDelete {
 			jobH.DeleteWorkerCV(w, r)
 			return
@@ -150,8 +160,8 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		switch r.Method {
 		case http.MethodGet:
 			jobH.GetEmployerProfile(w, r)
-		case http.MethodPut:
-			jobH.PutEmployerProfile(w, r)
+		case http.MethodPatch:
+			jobH.PatchEmployerProfile(w, r)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}

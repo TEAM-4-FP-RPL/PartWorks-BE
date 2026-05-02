@@ -8,7 +8,7 @@ type EmployerProfileDTO struct {
 }
 
 type UpdateEmployerProfileRequest struct {
-	CompanyName string `json:"company_name"`
-	Description string `json:"description"`
-	LogoURL     string `json:"logo_url"`
+	CompanyName *string `json:"company_name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	LogoURL     *string `json:"logo_url,omitempty"`
 }

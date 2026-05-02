@@ -88,6 +88,14 @@ func (r *JobRepository) ListWorkerCVs(workerID uuid.UUID) ([]domain.WorkerCV, er
 	return cvs, nil
 }
 
+func (r *JobRepository) CountWorkerCVs(workerID uuid.UUID) (int64, error) {
+	var cnt int64
+	if err := r.db.Model(&domain.WorkerCV{}).Where("worker_id = ?", workerID).Count(&cnt).Error; err != nil {
+		return 0, fmt.Errorf("count cvs: %w", err)
+	}
+	return cnt, nil
+}
+
 func (r *JobRepository) GetWorkerCVByID(cvID uuid.UUID) (*domain.WorkerCV, error) {
 	var cv domain.WorkerCV
 	if err := r.db.First(&cv, "id = ?", cvID).Error; err != nil {
@@ -99,9 +107,79 @@ func (r *JobRepository) GetWorkerCVByID(cvID uuid.UUID) (*domain.WorkerCV, error
 	return &cv, nil
 }
 
+func (r *JobRepository) GetWorkerCVsByIDs(cvIDs []uuid.UUID, workerID uuid.UUID) ([]domain.WorkerCV, error) {
+	var cvs []domain.WorkerCV
+	if len(cvIDs) == 0 {
+		return []domain.WorkerCV{}, nil
+	}
+	if err := r.db.Where("worker_id = ? AND id IN ?", workerID, cvIDs).Find(&cvs).Error; err != nil {
+		return nil, fmt.Errorf("get cvs: %w", err)
+	}
+	return cvs, nil
+}
+
+func (r *JobRepository) UpdateWorkerCVs(cvs []domain.WorkerCV) error {
+	if len(cvs) == 0 {
+		return nil
+	}
+	tx := r.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	for i := range cvs {
+		if err := tx.Model(&domain.WorkerCV{}).
+			Where("id = ? AND worker_id = ?", cvs[i].ID, cvs[i].WorkerID).
+			Updates(map[string]any{"category_id": cvs[i].CategoryID, "file_url": cvs[i].FileURL}).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("update cv: %w", err)
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *JobRepository) DeleteWorkerCVs(cvIDs []uuid.UUID, workerID uuid.UUID) ([]domain.WorkerCV, error) {
+	cvs, err := r.GetWorkerCVsByIDs(cvIDs, workerID)
+	if err != nil {
+		return nil, err
+	}
+	if len(cvs) != len(cvIDs) {
+		return nil, gorm.ErrRecordNotFound
+	}
+	tx := r.db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	if err := tx.Where("worker_id = ? AND id IN ?", workerID, cvIDs).Delete(&domain.WorkerCV{}).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("delete cvs: %w", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return nil, err
+	}
+	return cvs, nil
+}
+
 func (r *JobRepository) CreateWorkerCV(cv *domain.WorkerCV) error {
 	if err := r.db.Create(cv).Error; err != nil {
 		return fmt.Errorf("create cv: %w", err)
+	}
+	return nil
+}
+
+func (r *JobRepository) CreateWorkerCVs(cvs []domain.WorkerCV) error {
+	tx := r.db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	if err := tx.Create(&cvs).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("create cvs: %w", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
 	}
 	return nil
 }
