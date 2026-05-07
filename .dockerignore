@@ -1,0 +1,24 @@
+# Ignore unnecessary files to keep build context small
+.git
+.gitignore
+.env.local
+.env*.local
+*.md
+*.log
+*.sql
+*.db
+Dockerfile
+docker-compose.yml
+README.md
+node_modules
+vendor
+bin
+obj
+test
+coverage
+*.swp
+*.swo
+.DS_Store
+.idea
+.vscode
+*.tmp
