@@ -28,6 +28,17 @@ func registerPublicRoutes(mux *http.ServeMux, authH *handler.AuthHandler, jobH *
 		}
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
+
+	// Health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"healthy","service":"partworks-be"}`))
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
 }
 
 func registerJobRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
