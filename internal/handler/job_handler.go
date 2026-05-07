@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/dto"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/storage"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/jwt"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/pkg/response"
@@ -17,10 +18,13 @@ import (
 )
 
 type JobHandler struct {
-	uc *usecase.JobUsecase
+	uc      *usecase.JobUsecase
+	storage storage.ObjectStorage
 }
 
-func NewJobHandler(uc *usecase.JobUsecase) *JobHandler { return &JobHandler{uc: uc} }
+func NewJobHandler(uc *usecase.JobUsecase, st storage.ObjectStorage) *JobHandler {
+	return &JobHandler{uc: uc, storage: st}
+}
 
 func dayName(n int) string {
 	switch n {

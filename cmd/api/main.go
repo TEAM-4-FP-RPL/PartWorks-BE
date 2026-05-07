@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/config"
@@ -11,12 +13,18 @@ import (
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/handler"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/repository"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/routes"
+	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/storage"
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/usecase"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Try load .env from current working dir, then fallback to executable dir.
 	_ = godotenv.Load()
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		_ = godotenv.Load(filepath.Join(exeDir, ".env"))
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -42,7 +50,13 @@ func main() {
 
 	jobRepo := repository.NewJobRepository(db)
 	jobUC := usecase.NewJobUsecase(jobRepo, userRepo)
-	jobH := handler.NewJobHandler(jobUC)
+
+	st, err := storage.NewFromEnv()
+	if err != nil {
+		log.Fatalf("storage initialization failed: %v", err)
+	}
+
+	jobH := handler.NewJobHandler(jobUC, st)
 
 	router := routes.NewRouter(authH, jobH)
 

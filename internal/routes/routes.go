@@ -14,7 +14,6 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 	registerJobRoutes(mux, jobH)
 	registerEmployerRoutes(mux, jobH)
 	registerWorkerRoutes(mux, jobH)
-	registerStaticRoutes(mux)
 
 	return middleware.CORS(middleware.Log(mux))
 }
@@ -187,8 +186,4 @@ func registerWorkerRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
 		}
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
-}
-
-func registerStaticRoutes(mux *http.ServeMux) {
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 }

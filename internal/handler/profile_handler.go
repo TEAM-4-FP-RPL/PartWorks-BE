@@ -1,15 +1,17 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -32,18 +34,101 @@ var dayToInt = map[string]int{
 	"sunday":    7,
 }
 
-func fileSHA256Hex(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
+var (
+	errFileTooLarge = errors.New("file too large")
+	errNotPDF       = errors.New("file must be pdf")
+	errNotImage     = errors.New("file must be png or jpg")
+)
 
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+const maxUploadSize = 20 << 20
+
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			continue
+		case r >= 'a' && r <= 'f':
+			continue
+		case r >= 'A' && r <= 'F':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func extractSHA256FromFileURL(fileURL string) string {
+	u := strings.TrimSpace(fileURL)
+	if u == "" {
+		return ""
+	}
+	if q := strings.IndexByte(u, '?'); q >= 0 {
+		u = u[:q]
+	}
+	base := path.Base(u)
+	base = strings.TrimSuffix(base, ".pdf")
+	if isHex64(base) {
+		return strings.ToLower(base)
+	}
+	return ""
+}
+
+func readPDFAndHash(f multipart.File) ([]byte, string, error) {
+	defer f.Close()
+	lr := io.LimitReader(f, maxUploadSize+1)
+	data, err := io.ReadAll(lr)
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(data)) > maxUploadSize {
+		return nil, "", errFileTooLarge
+	}
+	if len(data) < 4 || string(data[:4]) != "%PDF" {
+		return nil, "", errNotPDF
+	}
+	sum := sha256.Sum256(data)
+	return data, hex.EncodeToString(sum[:]), nil
+}
+
+func readImageAndHash(f multipart.File) (data []byte, hash string, contentType string, ext string, err error) {
+	defer f.Close()
+	lr := io.LimitReader(f, maxUploadSize+1)
+	data, err = io.ReadAll(lr)
+	if err != nil {
+		return nil, "", "", "", err
+	}
+	if int64(len(data)) > maxUploadSize {
+		return nil, "", "", "", errFileTooLarge
+	}
+	if len(data) >= 8 && bytes.Equal(data[:8], []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) {
+		contentType = "image/png"
+		ext = "png"
+	} else if len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+		contentType = "image/jpeg"
+		ext = "jpg"
+	} else {
+		return nil, "", "", "", errNotImage
+	}
+	sum := sha256.Sum256(data)
+	return data, hex.EncodeToString(sum[:]), contentType, ext, nil
+}
+
+func multipartValue(r *http.Request, key string) (string, bool) {
+	if r.MultipartForm == nil {
+		return "", false
+	}
+	vals, ok := r.MultipartForm.Value[key]
+	if !ok {
+		return "", false
+	}
+	if len(vals) == 0 {
+		return "", true
+	}
+	return vals[0], true
 }
 
 func (h *JobHandler) GetWorkerProfile(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +190,121 @@ func (h *JobHandler) PatchWorkerProfile(w http.ResponseWriter, r *http.Request) 
 	}
 	if role != "worker" {
 		response.Error(w, http.StatusForbidden, "only workers can access this resource")
+		return
+	}
+
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if h.storage == nil {
+			log.Printf("PatchWorkerProfile: storage is nil")
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+			log.Printf("PatchWorkerProfile: parse multipart: %v", err)
+			response.Error(w, http.StatusBadRequest, "invalid multipart")
+			return
+		}
+
+		old, _, err := h.uc.GetWorkerProfile(userID)
+		if err != nil {
+			log.Printf("PatchWorkerProfile: get old profile: %v", err)
+			if strings.Contains(err.Error(), "user is not worker") {
+				response.Error(w, http.StatusForbidden, "only workers can access this resource")
+				return
+			}
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		upd := usecase.WorkerProfileUpdate{}
+		if v, ok := multipartValue(r, "full_name"); ok {
+			upd.FullName = &v
+		}
+		if v, ok := multipartValue(r, "phone_number"); ok {
+			upd.PhoneNumber = &v
+		}
+		if v, ok := multipartValue(r, "bio"); ok {
+			upd.Bio = &v
+		}
+		if v, ok := multipartValue(r, "skills"); ok {
+			upd.Skills = &v
+		}
+
+		uploadedKey := ""
+		if r.MultipartForm != nil {
+			files := r.MultipartForm.File["photo"]
+			if len(files) > 0 {
+				f, err := files[0].Open()
+				if err != nil {
+					response.Error(w, http.StatusBadRequest, "invalid photo")
+					return
+				}
+				data, hash, ct, ext, err := readImageAndHash(f)
+				if err != nil {
+					if errors.Is(err, errNotImage) {
+						response.Error(w, http.StatusBadRequest, "file must be png or jpg")
+						return
+					}
+					if errors.Is(err, errFileTooLarge) {
+						response.Error(w, http.StatusBadRequest, "file too large")
+						return
+					}
+					response.Error(w, http.StatusInternalServerError, "internal error")
+					return
+				}
+
+				safeUserID := strings.ReplaceAll(userID, "/", "_")
+				key := fmt.Sprintf("photos/workers/%s/%s.%s", safeUserID, hash, ext)
+
+				if oldKey, ok := h.storage.KeyFromURL(old.PhotoURL); ok && oldKey == key {
+					url := h.storage.PublicURL(key)
+					upd.PhotoURL = &url
+				} else {
+					url, err := h.storage.Put(r.Context(), key, bytes.NewReader(data), ct, int64(len(data)))
+					if err != nil {
+						log.Printf("PatchWorkerProfile: storage put key=%s err=%v", key, err)
+						response.Error(w, http.StatusInternalServerError, "internal error")
+						return
+					}
+					uploadedKey = key
+					upd.PhotoURL = &url
+				}
+			}
+		}
+
+		wp, err := h.uc.UpdateWorkerProfile(userID, upd)
+		if err != nil {
+			log.Printf("PatchWorkerProfile: update profile: %v", err)
+			if uploadedKey != "" {
+				if err2 := h.storage.Delete(r.Context(), uploadedKey); err2 != nil {
+					log.Printf("PatchWorkerProfile: rollback delete key=%s err=%v", uploadedKey, err2)
+				}
+			}
+			if strings.Contains(err.Error(), "user is not worker") {
+				response.Error(w, http.StatusForbidden, "only workers can access this resource")
+				return
+			}
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		if uploadedKey != "" {
+			if oldKey, ok := h.storage.KeyFromURL(old.PhotoURL); ok && oldKey != "" && oldKey != uploadedKey {
+				if err := h.storage.Delete(r.Context(), oldKey); err != nil {
+					log.Printf("PatchWorkerProfile: delete old key=%s err=%v", oldKey, err)
+				}
+			}
+		}
+
+		response.JSON(w, http.StatusOK, map[string]any{
+			"message": "Profil berhasil diupdate",
+			"data": map[string]any{
+				"id":         wp.ID.String(),
+				"full_name":  wp.FullName,
+				"updated_at": wp.UpdatedAt.Format(time.RFC3339),
+			},
+		})
 		return
 	}
 
@@ -253,7 +453,7 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(20 << 20); err != nil {
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		response.Error(w, http.StatusBadRequest, "invalid multipart")
 		return
 	}
@@ -263,10 +463,10 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 		CatID    int
 		FileKey  string
 		CatKey   string
-		Local    string
 		FileURL  string
 		FileID   uuid.UUID
 		FileHash string
+		ObjKey   string
 	}
 
 	slots := make([]slot, 0, 3)
@@ -336,31 +536,21 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 
 	existingHashes := make(map[string]struct{})
 	for _, cv := range existingCVs {
-		if !strings.HasPrefix(cv.FileURL, "/uploads/") {
+		if h := extractSHA256FromFileURL(cv.FileURL); h != "" {
+			existingHashes[h] = struct{}{}
 			continue
 		}
-		oldPath := strings.TrimPrefix(cv.FileURL, "/")
-		oldHash, err := fileSHA256Hex(oldPath)
-		if err != nil {
-			continue
-		}
-		existingHashes[oldHash] = struct{}{}
-	}
-
-	if err := os.MkdirAll(filepath.Join("uploads", "cvs"), 0o755); err != nil {
-		response.Error(w, http.StatusInternalServerError, "internal error")
-		return
 	}
 
 	newHashes := make(map[string]int)
+	uploaded := make([]string, 0, len(slots))
 	cleanup := func() {
-		for i := range slots {
-			if slots[i].Local != "" {
-				_ = os.Remove(slots[i].Local)
-			}
+		for _, k := range uploaded {
+			_ = h.storage.Delete(r.Context(), k)
 		}
 	}
 
+	safeUserID := strings.ReplaceAll(userID, "/", "_")
 	createItems := make([]usecase.WorkerCVCreateItem, 0, len(slots))
 	for i := range slots {
 		f, _, err := r.FormFile(slots[i].FileKey)
@@ -370,64 +560,47 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		buf := make([]byte, 4)
-		n, _ := io.ReadFull(f, buf)
-		if n < 4 || string(buf) != "%PDF" {
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusBadRequest, "file must be pdf")
-			return
-		}
-
-		cvID := uuid.New()
-		name := fmt.Sprintf("%s.pdf", cvID.String())
-		localPath := filepath.Join("uploads", "cvs", name)
-		outFile, err := os.Create(localPath)
+		data, newHash, err := readPDFAndHash(f)
 		if err != nil {
-			_ = f.Close()
 			cleanup()
+			if errors.Is(err, errNotPDF) {
+				response.Error(w, http.StatusBadRequest, "file must be pdf")
+				return
+			}
+			if errors.Is(err, errFileTooLarge) {
+				response.Error(w, http.StatusBadRequest, "file too large")
+				return
+			}
 			response.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 
-		hasher := sha256.New()
-		mw := io.MultiWriter(outFile, hasher)
-		if _, err := mw.Write(buf); err != nil {
-			_ = outFile.Close()
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		if _, err := io.Copy(mw, f); err != nil {
-			_ = outFile.Close()
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		_ = outFile.Close()
-		_ = f.Close()
-
-		newHash := hex.EncodeToString(hasher.Sum(nil))
 		if _, ok := existingHashes[newHash]; ok {
-			slots[i].Local = localPath
 			cleanup()
 			response.Error(w, http.StatusBadRequest, "cv yang sama sudah pernah diupload")
 			return
 		}
 		if prevIdx, ok := newHashes[newHash]; ok {
-			slots[i].Local = localPath
 			cleanup()
 			response.Error(w, http.StatusBadRequest, fmt.Sprintf("%s duplikat dengan file_%d", slots[i].FileKey, prevIdx))
 			return
 		}
 		newHashes[newHash] = slots[i].Idx
 
+		objKey := fmt.Sprintf("cvs/%s/%s.pdf", safeUserID, newHash)
+		url, err := h.storage.Put(r.Context(), objKey, bytes.NewReader(data), "application/pdf", int64(len(data)))
+		if err != nil {
+			cleanup()
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		uploaded = append(uploaded, objKey)
+
+		cvID := uuid.New()
 		slots[i].FileID = cvID
-		slots[i].Local = localPath
-		slots[i].FileURL = "/uploads/cvs/" + name
+		slots[i].FileURL = url
 		slots[i].FileHash = newHash
+		slots[i].ObjKey = objKey
 		createItems = append(createItems, usecase.WorkerCVCreateItem{ID: cvID, CategoryID: slots[i].CatID, FileURL: slots[i].FileURL})
 	}
 
@@ -527,8 +700,8 @@ func (h *JobHandler) DeleteWorkerCVs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i := range cvs {
-		if strings.HasPrefix(cvs[i].FileURL, "/uploads/") {
-			_ = os.Remove(strings.TrimPrefix(cvs[i].FileURL, "/"))
+		if key, ok := h.storage.KeyFromURL(cvs[i].FileURL); ok {
+			_ = h.storage.Delete(r.Context(), key)
 		}
 	}
 
@@ -546,7 +719,7 @@ func (h *JobHandler) PatchWorkerCVs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(20 << 20); err != nil {
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		response.Error(w, http.StatusBadRequest, "invalid multipart")
 		return
 	}
@@ -557,9 +730,9 @@ func (h *JobHandler) PatchWorkerCVs(w http.ResponseWriter, r *http.Request) {
 		CVID       uuid.UUID
 		CatID      *int
 		FileKey    string
-		LocalPath  string
 		NewFileURL *string
 		OldFileURL string
+		NewObjKey  string
 	}
 
 	slots := make([]slot, 0, 3)
@@ -602,14 +775,6 @@ func (h *JobHandler) PatchWorkerCVs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cleanup := func() {
-		for i := range slots {
-			if slots[i].LocalPath != "" {
-				_ = os.Remove(slots[i].LocalPath)
-			}
-		}
-	}
-
 	existingCVs, _, err := h.uc.ListWorkerCVs(userID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "internal error")
@@ -630,87 +795,76 @@ func (h *JobHandler) PatchWorkerCVs(w http.ResponseWriter, r *http.Request) {
 
 	existingHashes := make(map[string]struct{})
 	for _, cv := range existingCVs {
-		if !strings.HasPrefix(cv.FileURL, "/uploads/") {
+		if h := extractSHA256FromFileURL(cv.FileURL); h != "" {
+			existingHashes[h] = struct{}{}
 			continue
 		}
-		hash, err := fileSHA256Hex(strings.TrimPrefix(cv.FileURL, "/"))
-		if err != nil {
-			continue
-		}
-		existingHashes[hash] = struct{}{}
-	}
-
-	if err := os.MkdirAll(filepath.Join("uploads", "cvs"), 0o755); err != nil {
-		response.Error(w, http.StatusInternalServerError, "internal error")
-		return
 	}
 
 	newHashes := make(map[string]int)
+	uploaded := make([]string, 0, len(slots))
+	cleanup := func() {
+		for _, k := range uploaded {
+			_ = h.storage.Delete(r.Context(), k)
+		}
+	}
+
+	safeUserID := strings.ReplaceAll(userID, "/", "_")
 	for i := range slots {
 		_, filePresent := r.MultipartForm.File[slots[i].FileKey]
 		if !filePresent {
 			continue
 		}
+
 		f, _, err := r.FormFile(slots[i].FileKey)
 		if err != nil {
 			cleanup()
 			response.Error(w, http.StatusBadRequest, fmt.Sprintf("missing %s", slots[i].FileKey))
 			return
 		}
-		buf := make([]byte, 4)
-		n, _ := io.ReadFull(f, buf)
-		if n < 4 || string(buf) != "%PDF" {
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusBadRequest, "file must be pdf")
-			return
-		}
-		newFileID := uuid.New()
-		name := fmt.Sprintf("%s.pdf", newFileID.String())
-		localPath := filepath.Join("uploads", "cvs", name)
-		outFile, err := os.Create(localPath)
-		if err != nil {
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		hasher := sha256.New()
-		mw := io.MultiWriter(outFile, hasher)
-		if _, err := mw.Write(buf); err != nil {
-			_ = outFile.Close()
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		if _, err := io.Copy(mw, f); err != nil {
-			_ = outFile.Close()
-			_ = f.Close()
-			cleanup()
-			response.Error(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		_ = outFile.Close()
-		_ = f.Close()
 
-		newHash := hex.EncodeToString(hasher.Sum(nil))
+		data, newHash, err := readPDFAndHash(f)
+		if err != nil {
+			cleanup()
+			if errors.Is(err, errNotPDF) {
+				response.Error(w, http.StatusBadRequest, "file must be pdf")
+				return
+			}
+			if errors.Is(err, errFileTooLarge) {
+				response.Error(w, http.StatusBadRequest, "file too large")
+				return
+			}
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		oldHash := extractSHA256FromFileURL(slots[i].OldFileURL)
+		if oldHash != "" && oldHash == newHash {
+			continue
+		}
+
 		if _, ok := existingHashes[newHash]; ok {
-			slots[i].LocalPath = localPath
 			cleanup()
 			response.Error(w, http.StatusBadRequest, "cv yang sama sudah pernah diupload")
 			return
 		}
 		if prevIdx, ok := newHashes[newHash]; ok {
-			slots[i].LocalPath = localPath
 			cleanup()
 			response.Error(w, http.StatusBadRequest, fmt.Sprintf("%s duplikat dengan file_%d", slots[i].FileKey, prevIdx))
 			return
 		}
 		newHashes[newHash] = slots[i].Idx
 
-		url := "/uploads/cvs/" + name
-		slots[i].LocalPath = localPath
+		objKey := fmt.Sprintf("cvs/%s/%s.pdf", safeUserID, newHash)
+		url, err := h.storage.Put(r.Context(), objKey, bytes.NewReader(data), "application/pdf", int64(len(data)))
+		if err != nil {
+			cleanup()
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		uploaded = append(uploaded, objKey)
+
+		slots[i].NewObjKey = objKey
 		slots[i].NewFileURL = &url
 	}
 
@@ -731,8 +885,11 @@ func (h *JobHandler) PatchWorkerCVs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i := range slots {
-		if slots[i].NewFileURL != nil && strings.HasPrefix(slots[i].OldFileURL, "/uploads/") {
-			_ = os.Remove(strings.TrimPrefix(slots[i].OldFileURL, "/"))
+		if slots[i].NewFileURL == nil || *slots[i].NewFileURL == slots[i].OldFileURL {
+			continue
+		}
+		if key, ok := h.storage.KeyFromURL(slots[i].OldFileURL); ok {
+			_ = h.storage.Delete(r.Context(), key)
 		}
 	}
 
@@ -776,8 +933,8 @@ func (h *JobHandler) DeleteWorkerCV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.HasPrefix(cv.FileURL, "/uploads/") {
-		_ = os.Remove(strings.TrimPrefix(cv.FileURL, "/"))
+	if key, ok := h.storage.KeyFromURL(cv.FileURL); ok {
+		_ = h.storage.Delete(r.Context(), key)
 	}
 	response.JSON(w, http.StatusOK, map[string]any{"message": "CV berhasil dihapus"})
 }
@@ -816,6 +973,111 @@ func (h *JobHandler) PatchEmployerProfile(w http.ResponseWriter, r *http.Request
 	}
 	if role != "employer" {
 		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if h.storage == nil {
+			log.Printf("PatchEmployerProfile: storage is nil")
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+			log.Printf("PatchEmployerProfile: parse multipart: %v", err)
+			response.Error(w, http.StatusBadRequest, "invalid multipart")
+			return
+		}
+
+		old, err := h.uc.GetEmployerProfile(userID)
+		if err != nil {
+			log.Printf("PatchEmployerProfile: get old profile: %v", err)
+			if strings.Contains(err.Error(), "user is not employer") {
+				response.Error(w, http.StatusForbidden, "only employers can access this resource")
+				return
+			}
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		upd := usecase.EmployerProfileUpdate{}
+		if v, ok := multipartValue(r, "company_name"); ok {
+			upd.CompanyName = &v
+		}
+		if v, ok := multipartValue(r, "description"); ok {
+			upd.Description = &v
+		}
+
+		uploadedKey := ""
+		if r.MultipartForm != nil {
+			files := r.MultipartForm.File["logo"]
+			if len(files) > 0 {
+				f, err := files[0].Open()
+				if err != nil {
+					response.Error(w, http.StatusBadRequest, "invalid logo")
+					return
+				}
+				data, hash, ct, ext, err := readImageAndHash(f)
+				if err != nil {
+					if errors.Is(err, errNotImage) {
+						response.Error(w, http.StatusBadRequest, "file must be png or jpg")
+						return
+					}
+					if errors.Is(err, errFileTooLarge) {
+						response.Error(w, http.StatusBadRequest, "file too large")
+						return
+					}
+					response.Error(w, http.StatusInternalServerError, "internal error")
+					return
+				}
+
+				safeUserID := strings.ReplaceAll(userID, "/", "_")
+				key := fmt.Sprintf("logos/employers/%s/%s.%s", safeUserID, hash, ext)
+
+				if oldKey, ok := h.storage.KeyFromURL(old.LogoURL); ok && oldKey == key {
+					url := h.storage.PublicURL(key)
+					upd.LogoURL = &url
+				} else {
+					url, err := h.storage.Put(r.Context(), key, bytes.NewReader(data), ct, int64(len(data)))
+					if err != nil {
+						log.Printf("PatchEmployerProfile: storage put key=%s err=%v", key, err)
+						response.Error(w, http.StatusInternalServerError, "internal error")
+						return
+					}
+					uploadedKey = key
+					upd.LogoURL = &url
+				}
+			}
+		}
+
+		emp, err := h.uc.UpdateEmployerProfile(userID, upd)
+		if err != nil {
+			log.Printf("PatchEmployerProfile: update profile: %v", err)
+			if uploadedKey != "" {
+				if err2 := h.storage.Delete(r.Context(), uploadedKey); err2 != nil {
+					log.Printf("PatchEmployerProfile: rollback delete key=%s err=%v", uploadedKey, err2)
+				}
+			}
+			if strings.Contains(err.Error(), "user is not employer") {
+				response.Error(w, http.StatusForbidden, "only employers can access this resource")
+				return
+			}
+			response.Error(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		if uploadedKey != "" {
+			if oldKey, ok := h.storage.KeyFromURL(old.LogoURL); ok && oldKey != "" && oldKey != uploadedKey {
+				if err := h.storage.Delete(r.Context(), oldKey); err != nil {
+					log.Printf("PatchEmployerProfile: delete old key=%s err=%v", oldKey, err)
+				}
+			}
+		}
+
+		response.JSON(w, http.StatusOK, map[string]any{
+			"message": "Profil berhasil diupdate",
+			"data":    map[string]any{"id": emp.ID.String(), "company_name": emp.CompanyName, "updated_at": emp.UpdatedAt.Format(time.RFC3339)},
+		})
 		return
 	}
 
