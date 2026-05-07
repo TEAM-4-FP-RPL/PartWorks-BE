@@ -425,6 +425,10 @@ func (h *JobHandler) ListWorkerCVs(w http.ResponseWriter, r *http.Request) {
 
 	cvs, cats, err := h.uc.ListWorkerCVs(userID)
 	if err != nil {
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "only workers can access this resource")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "internal error")
 		return
 	}
