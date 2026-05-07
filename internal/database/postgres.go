@@ -24,7 +24,8 @@ func NewPostgresDB(ctx context.Context) (*gorm.DB, error) {
 
 	gormLogger := logger.Default.LogMode(logger.Info)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: gormLogger,
+		Logger:      gormLogger,
+		PrepareStmt: false, // Disable prepared statements to avoid cached plan issues
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open db: %w", err)

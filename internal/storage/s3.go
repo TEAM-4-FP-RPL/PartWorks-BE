@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -90,7 +91,14 @@ func (s *S3Storage) Put(ctx context.Context, key string, body io.Reader, content
 			}
 			continue
 		}
-		return s.PublicURL(k), nil
+
+		// Always use presigned URLs since the bucket requires authorization
+		presignedURL, err := s.PresignedURL(ctx, k, 24*time.Hour) // 24 hour expiry
+		if err != nil {
+			return "", err
+		}
+
+		return presignedURL, nil
 	}
 	return "", fmt.Errorf("s3 put failed with no attempts")
 }
@@ -138,6 +146,38 @@ func (s *S3Storage) KeyFromURL(url string) (string, bool) {
 	return "", false
 }
 
+func (s *S3Storage) PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	k, err := sanitizeKey(key)
+	if err != nil {
+		return "", err
+	}
+
+	// Try to generate presigned URL with each client until one succeeds
+	var presignedURL string
+	for i, client := range s.clients {
+		presignClient := s3.NewPresignClient(client)
+
+		request, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(k),
+		}, func(options *s3.PresignOptions) {
+			options.Expires = expiry
+		})
+
+		if err != nil {
+			if i == len(s.clients)-1 || !shouldRetryWithAltClient(err) {
+				return "", err
+			}
+			continue
+		}
+
+		presignedURL = request.URL
+		break
+	}
+
+	return presignedURL, nil
+}
+
 func shouldRetryWithAltClient(err error) bool {
 	var apiErr smithy.APIError
 	if !errors.As(err, &apiErr) {
@@ -163,9 +203,18 @@ func rewindReader(r io.Reader) error {
 }
 
 func newS3Client(cfg aws.Config, endpoint string, usePathStyle bool) *s3.Client {
+	// Check if this is Cloudflare R2 endpoint
+	isCloudflareR2 := strings.Contains(endpoint, ".r2.cloudflarestorage.com")
+
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 		o.UsePathStyle = usePathStyle
+
+		// Cloudflare R2 specific configuration
+		if isCloudflareR2 {
+			// Cloudflare R2 requires path-style addressing
+			o.UsePathStyle = true
+		}
 	})
 }
 

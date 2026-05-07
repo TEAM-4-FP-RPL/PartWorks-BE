@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 type ObjectStorage interface {
@@ -15,6 +16,7 @@ type ObjectStorage interface {
 	Delete(ctx context.Context, key string) error
 	PublicURL(key string) string
 	KeyFromURL(url string) (key string, ok bool)
+	PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 }
 
 func NewFromEnv() (ObjectStorage, error) {
