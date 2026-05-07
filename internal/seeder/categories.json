@@ -1,0 +1,7 @@
+[
+  {"id": 1, "name": "Plumbing"},
+  {"id": 2, "name": "Electrician"},
+  {"id": 3, "name": "Carpentry"},
+  {"id": 4, "name": "Cleaning"},
+  {"id": 5, "name": "Painting"}
+]
