@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 )
 
 type ObjectStorage interface {
@@ -16,40 +15,39 @@ type ObjectStorage interface {
 	Delete(ctx context.Context, key string) error
 	PublicURL(key string) string
 	KeyFromURL(url string) (key string, ok bool)
-	PresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 }
 
 func NewFromEnv() (ObjectStorage, error) {
-	s3Endpoint := strings.TrimSpace(os.Getenv("S3_ENDPOINT"))
-	s3Bucket := strings.TrimSpace(os.Getenv("S3_BUCKET"))
+	s3Endpoint := strings.TrimSpace(os.Getenv("R2_ENDPOINT"))
+	s3Bucket := strings.TrimSpace(os.Getenv("R2_BUCKET"))
 	if s3Endpoint == "" || s3Bucket == "" {
-		return nil, fmt.Errorf("S3_ENDPOINT and S3_BUCKET must be set")
+		return nil, fmt.Errorf("R2_ENDPOINT and R2_BUCKET must be set")
 	}
 
-	accessKeyID := firstNonEmptyEnv("S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
-	secretAccessKey := firstNonEmptyEnv("S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
-	sessionToken := firstNonEmptyEnv("S3_SESSION_TOKEN", "AWS_SESSION_TOKEN")
+	accessKeyID := firstNonEmptyEnv("R2_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
+	secretAccessKey := firstNonEmptyEnv("R2_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
+	sessionToken := firstNonEmptyEnv("R2_SESSION_TOKEN", "AWS_SESSION_TOKEN")
 
 	if u, err := url.Parse(s3Endpoint); err == nil {
 		host := strings.ToLower(strings.TrimSpace(u.Hostname()))
 		isAWS := host == "s3.amazonaws.com" || strings.HasSuffix(host, ".amazonaws.com")
 		if !isAWS {
 			if accessKeyID == "" || secretAccessKey == "" {
-				return nil, fmt.Errorf("S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY (or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) must be set for S3-compatible endpoint")
+				return nil, fmt.Errorf("R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY (or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) must be set for S3-compatible endpoint")
 			}
 		}
 	}
 
-	region := strings.TrimSpace(os.Getenv("S3_REGION"))
+	region := strings.TrimSpace(os.Getenv("R2_REGION"))
 	if region == "" {
 		region = "us-east-1"
 	}
-	publicBaseURL := strings.TrimSpace(os.Getenv("S3_PUBLIC_BASE_URL"))
+	publicBaseURL := strings.TrimSpace(os.Getenv("R2_PUBLIC_BASE_URL"))
 	if publicBaseURL == "" {
 		publicBaseURL = strings.TrimRight(s3Endpoint, "/") + "/" + s3Bucket
 	}
 
-	forcePathStyle := parseBoolDefault(os.Getenv("S3_FORCE_PATH_STYLE"), false)
+	forcePathStyle := parseBoolDefault(os.Getenv("R2_FORCE_PATH_STYLE"), false)
 
 	st, err := NewS3(context.Background(), S3Config{
 		Endpoint:        s3Endpoint,
