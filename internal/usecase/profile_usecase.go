@@ -200,10 +200,13 @@ func (uc *JobUsecase) ListWorkerCVs(userIDStr string) ([]domain.WorkerCV, map[in
 		return nil, nil, fmt.Errorf("get user: %w", err)
 	}
 	if user.Role != domain.RoleWorker {
-		return nil, nil, fmt.Errorf("user is not worker")
+		return nil, nil, ErrForbidden
 	}
 	wp, err := uc.repo.GetWorkerByUserID(uid)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []domain.WorkerCV{}, map[int]domain.Category{}, nil
+		}
 		return nil, nil, fmt.Errorf("get worker: %w", err)
 	}
 
