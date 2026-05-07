@@ -22,13 +22,6 @@ func (r *JobRepository) GetWorkerByUserID(userID uuid.UUID) (*domain.WorkerProfi
 		return nil, fmt.Errorf("get worker by id fallback: %w", err)
 	}
 
-	var u domain.User
-	if err := r.db.First(&u, "id = ?", userID).Error; err == nil {
-		return &domain.WorkerProfile{ID: userID, UserID: userID, FullName: ""}, nil
-	} else if err != nil && err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("get user fallback: %w", err)
-	}
-
 	return nil, gorm.ErrRecordNotFound
 }
 

@@ -241,9 +241,14 @@ func (uc *JobUsecase) CreateWorkerCV(userIDStr string, cvID uuid.UUID, categoryI
 		return nil, nil, fmt.Errorf("get user: %w", err)
 	}
 	if user.Role != domain.RoleWorker {
-		return nil, nil, fmt.Errorf("user is not worker")
+		return nil, nil, ErrForbidden
 	}
 	wp, err := uc.repo.GetWorkerByUserID(uid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			wp, err = uc.repo.CreateWorkerProfile(uid)
+		}
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("get worker: %w", err)
 	}
@@ -281,9 +286,14 @@ func (uc *JobUsecase) CreateWorkerCVsBulk(userIDStr string, items []WorkerCVCrea
 		return nil, nil, fmt.Errorf("get user: %w", err)
 	}
 	if user.Role != domain.RoleWorker {
-		return nil, nil, fmt.Errorf("user is not worker")
+		return nil, nil, ErrForbidden
 	}
 	wp, err := uc.repo.GetWorkerByUserID(uid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			wp, err = uc.repo.CreateWorkerProfile(uid)
+		}
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("get worker: %w", err)
 	}
