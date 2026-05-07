@@ -10,12 +10,30 @@ import (
 
 func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handler {
 	mux := http.NewServeMux()
+	registerPublicRoutes(mux, authH, jobH)
+	registerJobRoutes(mux, jobH)
+	registerEmployerRoutes(mux, jobH)
+	registerWorkerRoutes(mux, jobH)
+	registerStaticRoutes(mux)
+
+	return middleware.CORS(middleware.Log(mux))
+}
+
+func registerPublicRoutes(mux *http.ServeMux, authH *handler.AuthHandler, jobH *handler.JobHandler) {
 	mux.HandleFunc("/auth/register", authH.Register)
 	mux.HandleFunc("/auth/login", authH.Login)
+	mux.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			jobH.GetCategories(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+}
 
+func registerJobRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
 	jobsHandler := func(w http.ResponseWriter, r *http.Request) {
-		p := r.URL.Path
-		if strings.HasSuffix(p, "/apply") {
+		if strings.HasSuffix(r.URL.Path, "/apply") {
 			if r.Method == http.MethodPost {
 				jobH.Apply(w, r)
 				return
@@ -23,8 +41,7 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		p = r.URL.Path
-		if p == "/jobs" || p == "/jobs/" {
+		if r.URL.Path == "/jobs" || r.URL.Path == "/jobs/" {
 			switch r.Method {
 			case http.MethodGet:
 				jobH.GetAll(w, r)
@@ -48,6 +65,9 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 	}
 	mux.HandleFunc("/jobs", jobsHandler)
 	mux.HandleFunc("/jobs/", jobsHandler)
+}
+
+func registerEmployerRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
 	mux.HandleFunc("/employer/jobs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			jobH.GetEmployerJobs(w, r)
@@ -75,20 +95,6 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		}
 		w.WriteHeader(http.StatusNotFound)
 	})
-	mux.HandleFunc("/worker/applications", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			jobH.GetWorkerApplications(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	})
-	mux.HandleFunc("/worker/applications/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			jobH.DeleteWorkerApplication(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	})
 	mux.HandleFunc("/employer/applications", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			jobH.GetEmployerApplications(w, r)
@@ -107,7 +113,33 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		}
 		w.WriteHeader(http.StatusNotFound)
 	})
+	mux.HandleFunc("/employer/profile", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			jobH.GetEmployerProfile(w, r)
+		case http.MethodPatch:
+			jobH.PatchEmployerProfile(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+}
 
+func registerWorkerRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
+	mux.HandleFunc("/worker/applications", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			jobH.GetWorkerApplications(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+	mux.HandleFunc("/worker/applications/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			jobH.DeleteWorkerApplication(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
 	mux.HandleFunc("/worker/profile", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -155,27 +187,8 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 		}
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
+}
 
-	mux.HandleFunc("/employer/profile", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			jobH.GetEmployerProfile(w, r)
-		case http.MethodPatch:
-			jobH.PatchEmployerProfile(w, r)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-
-	mux.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			jobH.GetCategories(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	})
-
+func registerStaticRoutes(mux *http.ServeMux) {
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
-
-	return middleware.CORS(middleware.Log(mux))
 }

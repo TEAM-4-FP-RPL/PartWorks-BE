@@ -155,7 +155,7 @@ func (r *JobRepository) ListJobApplications(jobID uuid.UUID, status string, page
 	}
 
 	var apps []domain.Application
-	q := r.db.Where("job_id = ?", jobID)
+	q := r.db.Model(&domain.Application{}).Where("job_id = ?", jobID)
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}

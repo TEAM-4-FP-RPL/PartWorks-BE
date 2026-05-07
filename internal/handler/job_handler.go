@@ -43,6 +43,15 @@ func dayName(n int) string {
 	}
 }
 
+func normalizeApplicationStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "pending", "accepted", "rejected":
+		return strings.ToLower(strings.TrimSpace(status))
+	default:
+		return ""
+	}
+}
+
 func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -53,7 +62,7 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	catIDStr := strings.TrimSpace(q.Get("category_id"))
 	typ := strings.TrimSpace(q.Get("type"))
 	location := strings.TrimSpace(q.Get("location"))
-	status := strings.TrimSpace(q.Get("status"))
+	status := normalizeApplicationStatus(q.Get("status"))
 	pageStr := strings.TrimSpace(q.Get("page"))
 	limitStr := strings.TrimSpace(q.Get("limit"))
 
@@ -340,7 +349,7 @@ func (h *JobHandler) GetEmployerJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	status := strings.TrimSpace(q.Get("status"))
+	status := normalizeApplicationStatus(q.Get("status"))
 	page := 1
 	if p := strings.TrimSpace(q.Get("page")); p != "" {
 		if n, err := strconv.Atoi(p); err == nil && n > 0 {
@@ -381,7 +390,7 @@ func (h *JobHandler) GetWorkerApplications(w http.ResponseWriter, r *http.Reques
 	}
 
 	q := r.URL.Query()
-	status := strings.TrimSpace(q.Get("status"))
+	status := normalizeApplicationStatus(q.Get("status"))
 	page := 1
 	if p := strings.TrimSpace(q.Get("page")); p != "" {
 		if n, err := strconv.Atoi(p); err == nil && n > 0 {
@@ -463,7 +472,7 @@ func (h *JobHandler) GetEmployerApplications(w http.ResponseWriter, r *http.Requ
 	}
 
 	q := r.URL.Query()
-	status := strings.TrimSpace(q.Get("status"))
+	status := normalizeApplicationStatus(q.Get("status"))
 	page := 1
 	if p := strings.TrimSpace(q.Get("page")); p != "" {
 		if n, err := strconv.Atoi(p); err == nil && n > 0 {
@@ -548,7 +557,7 @@ func (h *JobHandler) GetEmployerJobApplications(w http.ResponseWriter, r *http.R
 	jobID := parts[0]
 
 	q := r.URL.Query()
-	status := strings.TrimSpace(q.Get("status"))
+	status := normalizeApplicationStatus(q.Get("status"))
 	page := 1
 	if p := strings.TrimSpace(q.Get("page")); p != "" {
 		if n, err := strconv.Atoi(p); err == nil && n > 0 {
