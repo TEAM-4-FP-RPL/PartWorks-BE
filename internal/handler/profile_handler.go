@@ -611,6 +611,10 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 	created, catMap, err := h.uc.CreateWorkerCVsBulk(userID, createItems)
 	if err != nil {
 		cleanup()
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "only workers can access this resource")
+			return
+		}
 		if errors.Is(err, usecase.ErrCVLimitReached) {
 			response.Error(w, http.StatusBadRequest, "maksimal 3 CV")
 			return
