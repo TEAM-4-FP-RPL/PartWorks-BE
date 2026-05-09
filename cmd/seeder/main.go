@@ -30,9 +30,9 @@ func loadJSON[T any](path string) ([]T, error) {
 func main() {
 	_ = godotenv.Load()
 
-	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	dsn := strings.TrimSpace(os.Getenv("CONNECTION_STRING"))
 	if dsn == "" {
-		dsn = strings.TrimSpace(os.Getenv("CONNECTION_STRING"))
+		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	}
 	if dsn == "" {
 		log.Fatal("DATABASE_URL or CONNECTION_STRING not set. Example: export DATABASE_URL=postgres://user:pass@host:5432/dbname?sslmode=disable")

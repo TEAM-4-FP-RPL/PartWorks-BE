@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/TEAM-4-FP-RPL/PartWorks-BE/internal/config"
@@ -28,6 +29,20 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// Log DSN (without password for security)
+	dsn := os.Getenv("CONNECTION_STRING")
+	if dsn == "" {
+		dsn = os.Getenv("DATABASE_URL")
+	}
+	// Mask password if present
+	maskedDSN := dsn
+	if idx := strings.Index(dsn, "password="); idx >= 0 {
+		if end := strings.Index(dsn[idx+9:], " "); end >= 0 {
+			maskedDSN = dsn[:idx+9] + "****" + dsn[idx+9+end:]
+		}
+	}
+	log.Printf("Attempting to connect to database: %s", maskedDSN)
 
 	db, err := database.NewPostgresDB(ctx)
 	if err != nil {
