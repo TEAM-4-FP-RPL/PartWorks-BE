@@ -65,6 +65,7 @@ type JobFilter struct {
 	Status     string
 	Page       int
 	Limit      int
+	Sort       string // "salary_asc", "salary_desc"
 }
 
 func (uc *JobUsecase) GetAll(filter JobFilter) ([]domain.Job, int64, error) {
@@ -76,6 +77,7 @@ func (uc *JobUsecase) GetAll(filter JobFilter) ([]domain.Job, int64, error) {
 		Status:     filter.Status,
 		Page:       filter.Page,
 		Limit:      filter.Limit,
+		Sort:       filter.Sort,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("usecase get all jobs: %w", err)

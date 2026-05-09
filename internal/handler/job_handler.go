@@ -92,6 +92,7 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	sort := strings.TrimSpace(q.Get("sort"))
 
 	jobs, total, err := h.uc.GetAll(usecase.JobFilter{
 		Search:     search,
@@ -101,6 +102,7 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		Status:     status,
 		Page:       page,
 		Limit:      limit,
+		Sort:       sort,
 	})
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "internal error")

@@ -120,6 +120,7 @@ func (r *JobRepository) GetCategoryByName(name string) (*domain.Category, error)
 }
 
 func (r *JobRepository) CreateCategory(cat *domain.Category) error {
+	// Try to create, if duplicate, return gorm error (will be handled by usecase)
 	if err := r.db.Create(cat).Error; err != nil {
 		return fmt.Errorf("create category: %w", err)
 	}
@@ -153,6 +154,7 @@ type JobFilter struct {
 	Status     string
 	Page       int
 	Limit      int
+	Sort       string // "salary_asc", "salary_desc"
 }
 
 func (r *JobRepository) ListByEmployer(employerID uuid.UUID, filter JobFilter) ([]domain.Job, int64, error) {
@@ -220,7 +222,15 @@ func (r *JobRepository) List(filter JobFilter) ([]domain.Job, int64, error) {
 	}
 	off := (filter.Page - 1) * filter.Limit
 
-	if err := db.Preload("Employer").Preload("Schedules").Order("created_at desc").Offset(off).Limit(filter.Limit).Find(&jobs).Error; err != nil {
+	// Build order clause
+	orderClause := "created_at desc"
+	if filter.Sort == "salary_asc" {
+		orderClause = "salary asc, created_at desc"
+	} else if filter.Sort == "salary_desc" {
+		orderClause = "salary desc, created_at desc"
+	}
+
+	if err := db.Preload("Employer").Preload("Schedules").Order(orderClause).Offset(off).Limit(filter.Limit).Find(&jobs).Error; err != nil {
 		return nil, 0, fmt.Errorf("list jobs: %w", err)
 	}
 
