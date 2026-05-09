@@ -789,6 +789,63 @@ func (h *JobHandler) PatchEmployerJobApplicationStatus(w http.ResponseWriter, r 
 	})
 }
 
+func (h *JobHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	log.Printf("CreateCategory: method=%s, path=%s", r.Method, r.URL.Path)
+	
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		log.Printf("CreateCategory: auth error: %v", err)
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	log.Printf("CreateCategory: userID=%s, role=%s", userID, role)
+	
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	var req dto.CreateCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("CreateCategory: json decode error: %v", err)
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	log.Printf("CreateCategory: request name=%s", req.Name)
+
+	cat, err := h.uc.CreateCategory(userID, req)
+	if err != nil {
+		log.Printf("CreateCategory: usecase error: %v", err)
+		if errors.Is(err, usecase.ErrCategoryExists) {
+			response.Error(w, http.StatusBadRequest, "category already exists")
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid user id")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	log.Printf("CreateCategory: success, category ID=%d", cat.ID)
+
+	response.JSON(w, http.StatusCreated, map[string]any{
+		"message": "Kategori berhasil dibuat",
+		"data": map[string]any{
+			"id":   cat.ID,
+			"name": cat.Name,
+		},
+	})
+}
+
 func (h *JobHandler) DeleteWorkerApplication(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")

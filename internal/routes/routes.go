@@ -21,13 +21,7 @@ func NewRouter(authH *handler.AuthHandler, jobH *handler.JobHandler) http.Handle
 func registerPublicRoutes(mux *http.ServeMux, authH *handler.AuthHandler, jobH *handler.JobHandler) {
 	mux.HandleFunc("/auth/register", authH.Register)
 	mux.HandleFunc("/auth/login", authH.Login)
-	mux.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			jobH.GetCategories(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	})
+	// Categories - GET is handled in registerEmployerRoutes to support POST for employer
 
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +107,17 @@ func registerEmployerRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.HandleFunc("/categories", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			jobH.CreateCategory(w, r)
+			return
+		}
+		if r.Method == http.MethodGet {
+			jobH.GetCategories(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 	mux.HandleFunc("/employer/applications", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {

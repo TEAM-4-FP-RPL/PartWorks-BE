@@ -15,6 +15,7 @@ import (
 
 var ErrInvalidID = errors.New("invalid id")
 var ErrForbidden = errors.New("forbidden")
+var ErrCategoryExists = errors.New("category already exists")
 
 var dayToInt = map[string]int{
 	"monday":    1,
@@ -358,4 +359,41 @@ func (uc *JobUsecase) GetEmployerJobs(userIDStr string, filter JobFilter) ([]dto
 		})
 	}
 	return out, total, nil
+}
+
+func (uc *JobUsecase) CreateCategory(userIDStr string, req dto.CreateCategoryRequest) (*domain.Category, error) {
+	uid, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+	user, err := uc.userRepo.GetByID(uid)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if string(user.Role) != string(domain.RoleEmployer) {
+		return nil, fmt.Errorf("user is not employer")
+	}
+
+	// Check if category with same name already exists
+	existing, err := uc.repo.GetCategoryByName(req.Name)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("check existing category: %w", err)
+	}
+	if existing != nil {
+		return nil, ErrCategoryExists
+	}
+
+	// Normalize name: trim and lowercase for storage
+	name := strings.TrimSpace(req.Name)
+	// Store with proper case but check case-insensitive
+
+	cat := &domain.Category{
+		ID:   0,
+		Name: name,
+	}
+
+	if err := uc.repo.CreateCategory(cat); err != nil {
+		return nil, fmt.Errorf("create category: %w", err)
+	}
+	return cat, nil
 }

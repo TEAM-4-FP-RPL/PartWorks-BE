@@ -108,6 +108,24 @@ func (r *JobRepository) GetCategoryByID(id int) (*domain.Category, error) {
 	return &c, nil
 }
 
+func (r *JobRepository) GetCategoryByName(name string) (*domain.Category, error) {
+	var c domain.Category
+	if err := r.db.Where("LOWER(name) = LOWER(?)", name).First(&c).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, fmt.Errorf("get category by name: %w", err)
+	}
+	return &c, nil
+}
+
+func (r *JobRepository) CreateCategory(cat *domain.Category) error {
+	if err := r.db.Create(cat).Error; err != nil {
+		return fmt.Errorf("create category: %w", err)
+	}
+	return nil
+}
+
 func (r *JobRepository) Delete(jobID uuid.UUID) error {
 	tx := r.db.Begin()
 	if tx.Error != nil {
