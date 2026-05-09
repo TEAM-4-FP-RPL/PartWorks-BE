@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -91,6 +92,7 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	sort := strings.TrimSpace(q.Get("sort"))
 
 	jobs, total, err := h.uc.GetAll(usecase.JobFilter{
 		Search:     search,
@@ -100,6 +102,7 @@ func (h *JobHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		Status:     status,
 		Page:       page,
 		Limit:      limit,
+		Sort:       sort,
 	})
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "internal error")
@@ -692,6 +695,155 @@ func (h *JobHandler) PatchEmployerApplicationStatus(w http.ResponseWriter, r *ht
 			"id":         app.ID.String(),
 			"status":     app.Status,
 			"updated_at": app.UpdatedAt.Format(time.RFC3339),
+		},
+	})
+}
+
+func (h *JobHandler) PatchEmployerJobApplicationStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	// Log the actual path for debugging
+	log.Printf("PatchEmployerJobApplicationStatus: path=%s", r.URL.Path)
+
+	// Extract job ID and application ID from path
+	// Path: /employer/jobs/{job_id}/applications/{application_id}/status
+	p := strings.TrimPrefix(r.URL.Path, "/employer/jobs/")
+	p = strings.Trim(p, "/")
+	
+	log.Printf("PatchEmployerJobApplicationStatus: trimmed path=%s", p)
+	
+	// Split path into parts
+	parts := strings.Split(p, "/")
+	log.Printf("PatchEmployerJobApplicationStatus: parts=%v (len=%d)", parts, len(parts))
+	
+	// Expected format: {job_id}/applications/{application_id}/status
+	// parts[0] = job_id, parts[1] = "applications", parts[2] = application_id, parts[3] = "status"
+	if len(parts) != 4 || parts[1] != "applications" || parts[3] != "status" {
+		response.Error(w, http.StatusBadRequest, "invalid path. Expected: /employer/jobs/{job_id}/applications/{application_id}/status")
+		return
+	}
+	
+	// jobID := parts[0]  // Not used, but kept for future reference
+	appID := parts[2]
+
+	// Parse and validate request body
+	var req dto.UpdateApplicationStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	// Validate status
+	st := strings.ToLower(strings.TrimSpace(req.Status))
+	switch st {
+	case "pending", "accepted", "rejected":
+	default:
+		response.Error(w, http.StatusBadRequest, "invalid status. Must be one of: pending, accepted, rejected")
+		return
+	}
+
+	// Update application status
+	app, err := h.uc.UpdateEmployerApplicationStatus(userID, appID, st)
+	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidStatus) {
+			response.Error(w, http.StatusBadRequest, "invalid status")
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid application id")
+			return
+		}
+		if errors.Is(err, usecase.ErrForbidden) {
+			response.Error(w, http.StatusForbidden, "not allowed")
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(w, http.StatusNotFound, "application not found")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message": "Status lamaran berhasil diubah",
+		"data": map[string]any{
+			"id":         app.ID.String(),
+			"status":     app.Status,
+			"updated_at": app.UpdatedAt.Format(time.RFC3339),
+		},
+	})
+}
+
+func (h *JobHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	log.Printf("CreateCategory: method=%s, path=%s", r.Method, r.URL.Path)
+	
+	if r.Method != http.MethodPost {
+		response.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, role, err := extractAuth(r)
+	if err != nil {
+		log.Printf("CreateCategory: auth error: %v", err)
+		response.Error(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	log.Printf("CreateCategory: userID=%s, role=%s", userID, role)
+	
+	if role != "employer" {
+		response.Error(w, http.StatusForbidden, "only employers can access this resource")
+		return
+	}
+
+	var req dto.CreateCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("CreateCategory: json decode error: %v", err)
+		response.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	log.Printf("CreateCategory: request name=%s", req.Name)
+
+	cat, err := h.uc.CreateCategory(userID, req)
+	if err != nil {
+		log.Printf("CreateCategory: usecase error: %v", err)
+		if errors.Is(err, usecase.ErrCategoryExists) {
+			response.Error(w, http.StatusBadRequest, "category already exists")
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidID) {
+			response.Error(w, http.StatusBadRequest, "invalid user id")
+			return
+		}
+		if strings.Contains(err.Error(), "user is not employer") {
+			response.Error(w, http.StatusForbidden, "only employers can access this resource")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	log.Printf("CreateCategory: success, category ID=%d", cat.ID)
+
+	response.JSON(w, http.StatusCreated, map[string]any{
+		"message": "Kategori berhasil dibuat",
+		"data": map[string]any{
+			"id":   cat.ID,
+			"name": cat.Name,
 		},
 	})
 }

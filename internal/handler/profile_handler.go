@@ -1,4 +1,5 @@
 package handler
+
 import (
 	"bytes"
 	"crypto/sha256"
@@ -86,8 +87,15 @@ func readPDFAndHash(f multipart.File) ([]byte, string, error) {
 	if int64(len(data)) > maxUploadSize {
 		return nil, "", errFileTooLarge
 	}
-	if len(data) < 4 || string(data[:4]) != "%PDF" {
-		return nil, "", errNotPDF
+	// Trim leading whitespace/newlines before checking PDF header
+	data = bytes.TrimSpace(data)
+	if len(data) < 4 {
+		return nil, "", fmt.Errorf("file too small to be PDF (size: %d)", len(data))
+	}
+	// Log first 20 bytes for debugging
+	log.Printf("PDF check - first 20 bytes: %v", data[:min(20, len(data))])
+	if string(data[:4]) != "%PDF" {
+		return nil, "", fmt.Errorf("file does not start with %%PDF (got: %v)", data[:4])
 	}
 	sum := sha256.Sum256(data)
 	return data, hex.EncodeToString(sum[:]), nil
@@ -566,6 +574,7 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 		data, newHash, err := readPDFAndHash(f)
 		if err != nil {
 			cleanup()
+			log.Printf("UploadWorkerCV: readPDFAndHash error: %v", err)
 			if errors.Is(err, errNotPDF) {
 				response.Error(w, http.StatusBadRequest, "file must be pdf")
 				return
@@ -594,6 +603,7 @@ func (h *JobHandler) UploadWorkerCV(w http.ResponseWriter, r *http.Request) {
 		url, err := h.storage.Put(r.Context(), objKey, bytes.NewReader(data), "application/pdf", int64(len(data)))
 		if err != nil {
 			cleanup()
+			log.Printf("UploadWorkerCV: storage.Put error key=%s err=%v", objKey, err)
 			response.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}

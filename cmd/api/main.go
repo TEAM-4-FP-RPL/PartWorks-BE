@@ -21,11 +21,19 @@ import (
 
 func main() {
 	// Try load .env from current working dir, then fallback to executable dir.
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		log.Printf("warning: .env not found in current dir: %v", err)
+	}
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
-		_ = godotenv.Load(filepath.Join(exeDir, ".env"))
+		if err := godotenv.Load(filepath.Join(exeDir, ".env")); err != nil {
+			log.Printf("warning: .env not found in executable dir: %v", err)
+		}
 	}
+
+	// Force IPv4 only (disable IPv6) to avoid "address family not supported" errors
+	// Set before any network operations
+	os.Setenv("GODEBUG", "netdns=cgo")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -43,6 +51,8 @@ func main() {
 		}
 	}
 	log.Printf("Attempting to connect to database: %s", maskedDSN)
+	log.Printf("CONNECTION_STRING env: %s", os.Getenv("CONNECTION_STRING"))
+	log.Printf("DATABASE_URL env: %s", os.Getenv("DATABASE_URL"))
 
 	db, err := database.NewPostgresDB(ctx)
 	if err != nil {

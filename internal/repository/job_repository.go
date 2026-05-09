@@ -108,6 +108,25 @@ func (r *JobRepository) GetCategoryByID(id int) (*domain.Category, error) {
 	return &c, nil
 }
 
+func (r *JobRepository) GetCategoryByName(name string) (*domain.Category, error) {
+	var c domain.Category
+	if err := r.db.Where("LOWER(name) = LOWER(?)", name).First(&c).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, fmt.Errorf("get category by name: %w", err)
+	}
+	return &c, nil
+}
+
+func (r *JobRepository) CreateCategory(cat *domain.Category) error {
+    result := r.db.Where(domain.Category{Name: cat.Name}).FirstOrCreate(cat)
+    if result.Error != nil {
+        return fmt.Errorf("create category: %w", result.Error)
+    }
+    return nil
+}
+
 func (r *JobRepository) Delete(jobID uuid.UUID) error {
 	tx := r.db.Begin()
 	if tx.Error != nil {
@@ -135,6 +154,7 @@ type JobFilter struct {
 	Status     string
 	Page       int
 	Limit      int
+	Sort       string // "salary_asc", "salary_desc"
 }
 
 func (r *JobRepository) ListByEmployer(employerID uuid.UUID, filter JobFilter) ([]domain.Job, int64, error) {
@@ -202,7 +222,15 @@ func (r *JobRepository) List(filter JobFilter) ([]domain.Job, int64, error) {
 	}
 	off := (filter.Page - 1) * filter.Limit
 
-	if err := db.Preload("Employer").Preload("Schedules").Order("created_at desc").Offset(off).Limit(filter.Limit).Find(&jobs).Error; err != nil {
+	// Build order clause
+	orderClause := "created_at desc"
+	if filter.Sort == "salary_asc" {
+		orderClause = "salary asc, created_at desc"
+	} else if filter.Sort == "salary_desc" {
+		orderClause = "salary desc, created_at desc"
+	}
+
+	if err := db.Preload("Employer").Preload("Schedules").Order(orderClause).Offset(off).Limit(filter.Limit).Find(&jobs).Error; err != nil {
 		return nil, 0, fmt.Errorf("list jobs: %w", err)
 	}
 

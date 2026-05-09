@@ -22,6 +22,8 @@ func NewPostgresDB(ctx context.Context) (*gorm.DB, error) {
 		return nil, fmt.Errorf("no database DSN provided in CONNECTION_STRING or DATABASE_URL")
 	}
 
+	os.Setenv("GODEBUG", "netdns=cgo")
+
 	gormLogger := logger.Default.LogMode(logger.Info)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger:      gormLogger,

@@ -1,5 +1,9 @@
 package dto
 
+type UpdateApplicationStatusRequest struct {
+	Status string `json:"status" binding:"required,oneof=pending accepted rejected"`
+}
+
 type WorkerApplicationsJobEmployerDTO struct {
 	CompanyName string `json:"company_name"`
 	LogoURL     string `json:"logo_url"`
