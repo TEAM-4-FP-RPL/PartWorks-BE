@@ -103,6 +103,15 @@ func registerEmployerRoutes(mux *http.ServeMux, jobH *handler.JobHandler) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		// Check for /applications/{application_id}/status endpoint
+		if strings.HasSuffix(strings.TrimSuffix(p, "/"), "/status") {
+			if r.Method == http.MethodPatch {
+				jobH.PatchEmployerJobApplicationStatus(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		w.WriteHeader(http.StatusNotFound)
 	})
 	mux.HandleFunc("/employer/applications", func(w http.ResponseWriter, r *http.Request) {
