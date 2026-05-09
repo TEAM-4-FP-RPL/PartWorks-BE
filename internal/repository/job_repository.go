@@ -120,11 +120,11 @@ func (r *JobRepository) GetCategoryByName(name string) (*domain.Category, error)
 }
 
 func (r *JobRepository) CreateCategory(cat *domain.Category) error {
-	// Try to create, if duplicate, return gorm error (will be handled by usecase)
-	if err := r.db.Create(cat).Error; err != nil {
-		return fmt.Errorf("create category: %w", err)
-	}
-	return nil
+    result := r.db.Where(domain.Category{Name: cat.Name}).FirstOrCreate(cat)
+    if result.Error != nil {
+        return fmt.Errorf("create category: %w", result.Error)
+    }
+    return nil
 }
 
 func (r *JobRepository) Delete(jobID uuid.UUID) error {
