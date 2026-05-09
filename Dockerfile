@@ -28,6 +28,10 @@ FROM alpine:3.18
 # Install CA certificates for HTTPS
 RUN apk add --no-cache ca-certificates
 
+# Disable IPv6 at system level
+RUN echo 'net.ipv6.conf.all.disable_ipv6 = 1' > /etc/sysctl.d/99-disable-ipv6.conf && \
+    echo 'net.ipv6.conf.default.disable_ipv6 = 1' >> /etc/sysctl.d/99-disable-ipv6.conf
+
 # Copy the binary from the builder stage
 COPY --from=builder /partworks-be /app/partworks-be
 
