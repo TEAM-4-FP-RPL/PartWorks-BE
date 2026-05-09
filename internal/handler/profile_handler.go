@@ -1,5 +1,4 @@
 package handler
-
 import (
 	"bytes"
 	"crypto/sha256"
